@@ -35,8 +35,8 @@ After starting the containers, use these connection URLs in PGUI:
 - The database file will be created at `./sqlite_data/test.db`
 
 ### ClickHouse
-- URL: `clickhouse://test:test@localhost:9000/test`
-- HTTP Port: 8123
+- URL: `http://test:test@localhost:8123/test`
+- HTTP Port: 8123 (default)
 - Native Port: 9000
 
 ## Sample Data

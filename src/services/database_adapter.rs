@@ -49,7 +49,10 @@ impl DatabaseType {
             Ok(DatabaseType::PostgreSQL)
         } else if url.starts_with("sqlite://") || url.ends_with(".db") || url.ends_with(".sqlite") {
             Ok(DatabaseType::SQLite)
-        } else if url.starts_with("clickhouse://") || url.starts_with("tcp://") {
+        } else if url.starts_with("clickhouse://") 
+            || url.starts_with("tcp://") 
+            || (url.starts_with("http://") && (url.contains(":8123") || url.contains("clickhouse")))
+            || (url.starts_with("https://") && (url.contains(":8123") || url.contains("clickhouse"))) {
             Ok(DatabaseType::ClickHouse)
         } else {
             Err(anyhow::anyhow!("Unsupported database URL scheme"))

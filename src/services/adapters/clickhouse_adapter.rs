@@ -44,16 +44,8 @@ impl ClickHouseAdapter {
 #[async_trait]
 impl DatabaseAdapter for ClickHouseAdapter {
     async fn connect(&mut self, connection_url: &str) -> Result<()> {
-        // Parse ClickHouse URL - supports both clickhouse:// and tcp:// schemes
-        let url = if connection_url.starts_with("clickhouse://") {
-            connection_url.replace("clickhouse://", "tcp://")
-        } else if !connection_url.starts_with("tcp://") {
-            format!("tcp://{}", connection_url)
-        } else {
-            connection_url.to_string()
-        };
-
-        let pool = Pool::new(url);
+        // ClickHouse-rs accepts URLs directly - it handles http://, https://, and tcp:// schemes
+        let pool = Pool::new(connection_url);
         let client = pool.get_handle().await?;
         
         self.pool = Some(pool);

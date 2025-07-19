@@ -32,6 +32,6 @@ As of 2025-06-11:
 3. Connect to a database:
    - PostgreSQL: `postgres://test:test@localhost:5432/test`
    - SQLite: `sqlite://sqlite_data/test.db`
-   - ClickHouse: `clickhouse://test:test@localhost:9000/test`
+   - ClickHouse: `http://test:test@localhost:8123/test`
 
 See [DATABASE_SETUP.md](./DATABASE_SETUP.md) for detailed setup instructions.

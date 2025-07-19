@@ -21,7 +21,7 @@ impl DatabaseFactory {
         match db_type {
             DatabaseType::PostgreSQL => "postgres://username:password@localhost:5432/database",
             DatabaseType::SQLite => "sqlite://path/to/database.db",
-            DatabaseType::ClickHouse => "clickhouse://username:password@localhost:9000/database",
+            DatabaseType::ClickHouse => "http://username:password@localhost:8123/database",
         }
     }
 
