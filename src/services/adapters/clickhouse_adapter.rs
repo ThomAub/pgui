@@ -5,15 +5,23 @@ use anyhow::Result;
 use async_trait::async_trait;
 use clickhouse::{Client, Row};
 use serde::Deserialize;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::runtime::Runtime;
 
 pub struct ClickHouseAdapter {
     client: Option<Client>,
+    runtime: Arc<Runtime>,
 }
 
 impl ClickHouseAdapter {
     pub fn new() -> Self {
-        Self { client: None }
+        // Create a dedicated Tokio runtime for ClickHouse operations
+        let runtime = Runtime::new().expect("Failed to create Tokio runtime");
+        Self {
+            client: None,
+            runtime: Arc::new(runtime),
+        }
     }
 
     fn parse_connection_url(url: &str) -> Result<(String, String, String, String)> {
@@ -94,6 +102,12 @@ impl DatabaseAdapter for ClickHouseAdapter {
             .with_password(&password)
             .with_database(&database);
         
+        // Test the connection in the Tokio runtime
+        let client_clone = client.clone();
+        self.runtime.block_on(async {
+            client_clone.query("SELECT 1").execute().await
+        })?;
+        
         self.client = Some(client);
         Ok(())
     }
@@ -125,9 +139,18 @@ impl DatabaseAdapter for ClickHouseAdapter {
             || sql.to_lowercase().trim_start().starts_with("show")
             || sql.to_lowercase().trim_start().starts_with("describe");
 
+        // Execute queries in the Tokio runtime
+        let client = client.clone();
+        let sql = sql.to_string();
+        let runtime = self.runtime.clone();
+        
         if is_select {
             // For SELECT queries, we need to fetch the raw data as string
-            match client.query(sql).fetch_all::<String>().await {
+            let result = runtime.block_on(async {
+                client.query(&sql).fetch_all::<String>().await
+            });
+            
+            match result {
                 Ok(rows) => {
                     let execution_time = start_time.elapsed().as_millis();
 
@@ -168,7 +191,11 @@ impl DatabaseAdapter for ClickHouseAdapter {
             }
         } else {
             // For non-SELECT queries (INSERT, CREATE, etc.)
-            match client.query(sql).execute().await {
+            let result = runtime.block_on(async {
+                client.query(&sql).execute().await
+            });
+            
+            match result {
                 Ok(_) => {
                     let execution_time = start_time.elapsed().as_millis();
                     QueryExecutionResult::Modified {
@@ -197,7 +224,12 @@ impl DatabaseAdapter for ClickHouseAdapter {
             ORDER BY database, name
         "#;
 
-        let rows = client.query(query).fetch_all::<TableRow>().await?;
+        let client = client.clone();
+        let runtime = self.runtime.clone();
+        
+        let rows = runtime.block_on(async {
+            client.query(query).fetch_all::<TableRow>().await
+        })?;
 
         let tables = rows
             .into_iter()
@@ -232,12 +264,19 @@ impl DatabaseAdapter for ClickHouseAdapter {
             ORDER BY position
         "#;
 
-        let rows = client
-            .query(query)
-            .bind(table_name)
-            .bind(table_schema)
-            .fetch_all::<ColumnRow>()
-            .await?;
+        let client = client.clone();
+        let runtime = self.runtime.clone();
+        let table_name = table_name.to_string();
+        let table_schema = table_schema.to_string();
+        
+        let rows = runtime.block_on(async {
+            client
+                .query(query)
+                .bind(&table_name)
+                .bind(&table_schema)
+                .fetch_all::<ColumnRow>()
+                .await
+        })?;
 
         let columns: Vec<ColumnInfo> = rows
             .into_iter()
@@ -296,7 +335,13 @@ impl DatabaseAdapter for ClickHouseAdapter {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Database not connected"))?;
 
-        client.query("SELECT 1").execute().await?;
+        let client = client.clone();
+        let runtime = self.runtime.clone();
+        
+        runtime.block_on(async {
+            client.query("SELECT 1").execute().await
+        })?;
+        
         Ok(true)
     }
 
