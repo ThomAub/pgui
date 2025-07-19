@@ -84,7 +84,7 @@ docker-compose down -v
 ### ClickHouse Connection Issues
 If you can't connect to ClickHouse, ensure:
 1. The container is running: `docker ps`
-2. Port 9000 is not in use: `lsof -i :9000`
+2. Port 8123 is not in use: `lsof -i :8123`
 3. Try the HTTP interface: `curl http://localhost:8123/`
 
 ### SQLite Permissions

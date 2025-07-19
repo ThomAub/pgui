@@ -3,59 +3,103 @@ use crate::services::database_adapter::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
-use clickhouse_rs::{Block, ClientHandle, Pool, types::Complex};
+use clickhouse::{Client, Row};
+use serde::Deserialize;
 use std::time::Instant;
 
 pub struct ClickHouseAdapter {
-    pool: Option<Pool>,
-    client: Option<ClientHandle>,
+    client: Option<Client>,
 }
 
 impl ClickHouseAdapter {
     pub fn new() -> Self {
-        Self {
-            pool: None,
-            client: None,
-        }
+        Self { client: None }
     }
 
-    fn column_to_string(block: &Block<Complex>, row_idx: usize, col_idx: usize) -> String {
-        // For now, we'll use a simple string representation
-        // This is a simplified version - in production you'd handle all types properly
-        match block.get::<String, _>(row_idx, col_idx) {
-            Ok(val) => val,
-            Err(_) => {
-                // Try as i64
-                match block.get::<i64, _>(row_idx, col_idx) {
-                    Ok(val) => val.to_string(),
-                    Err(_) => {
-                        // Try as f64
-                        match block.get::<f64, _>(row_idx, col_idx) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "NULL".to_string(),
-                        }
-                    }
-                }
-            }
+    fn parse_connection_url(url: &str) -> Result<(String, String, String, String)> {
+        // Parse URL to extract components
+        // Expected format: http://username:password@localhost:8123/database
+        let url_without_scheme = if url.starts_with("http://") {
+            url.strip_prefix("http://").unwrap()
+        } else if url.starts_with("https://") {
+            url.strip_prefix("https://").unwrap()
+        } else {
+            return Err(anyhow::anyhow!("ClickHouse requires HTTP or HTTPS URL"));
+        };
+
+        // Extract user:pass@host:port/database
+        let parts: Vec<&str> = url_without_scheme.split('@').collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!("Invalid URL format"));
         }
+
+        let (user_pass, host_db) = (parts[0], parts[1]);
+        
+        // Parse user:pass
+        let creds: Vec<&str> = user_pass.split(':').collect();
+        let (user, password) = if creds.len() == 2 {
+            (creds[0].to_string(), creds[1].to_string())
+        } else {
+            ("default".to_string(), "".to_string())
+        };
+
+        // Parse host:port/database
+        let host_parts: Vec<&str> = host_db.split('/').collect();
+        if host_parts.is_empty() {
+            return Err(anyhow::anyhow!("Invalid URL format"));
+        }
+
+        let host_port = host_parts[0];
+        let database = if host_parts.len() > 1 {
+            host_parts[1].to_string()
+        } else {
+            "default".to_string()
+        };
+
+        let full_url = if url.starts_with("https://") {
+            format!("https://{}", host_port)
+        } else {
+            format!("http://{}", host_port)
+        };
+
+        Ok((full_url, user, password, database))
     }
+}
+
+// Helper structs for deserializing ClickHouse system tables
+#[derive(Debug, Deserialize, Row)]
+struct TableRow {
+    name: String,
+    database: String,
+    engine: String,
+}
+
+#[derive(Debug, Deserialize, Row)]
+struct ColumnRow {
+    name: String,
+    #[serde(rename = "type")]
+    data_type: String,
+    default_expression: String,
+    position: u64,
 }
 
 #[async_trait]
 impl DatabaseAdapter for ClickHouseAdapter {
     async fn connect(&mut self, connection_url: &str) -> Result<()> {
-        // ClickHouse-rs accepts URLs directly - it handles http://, https://, and tcp:// schemes
-        let pool = Pool::new(connection_url);
-        let client = pool.get_handle().await?;
+        let (url, user, password, database) = Self::parse_connection_url(connection_url)?;
         
-        self.pool = Some(pool);
+        let client = Client::default()
+            .with_url(&url)
+            .with_user(&user)
+            .with_password(&password)
+            .with_database(&database);
+        
         self.client = Some(client);
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<()> {
         self.client = None;
-        self.pool = None;
         Ok(())
     }
 
@@ -66,8 +110,8 @@ impl DatabaseAdapter for ClickHouseAdapter {
     async fn execute_query(&self, sql: &str) -> QueryExecutionResult {
         let start_time = Instant::now();
 
-        let pool = match &self.pool {
-            Some(pool) => pool,
+        let client = match &self.client {
+            Some(client) => client,
             None => return QueryExecutionResult::Error("Database not connected".to_string()),
         };
 
@@ -82,12 +126,12 @@ impl DatabaseAdapter for ClickHouseAdapter {
             || sql.to_lowercase().trim_start().starts_with("describe");
 
         if is_select {
-            match pool.get_handle().await {
-                Ok(mut client) => match client.query(sql).fetch_all().await {
-                Ok(block) => {
+            // For SELECT queries, we need to fetch the raw data as string
+            match client.query(sql).fetch_all::<String>().await {
+                Ok(rows) => {
                     let execution_time = start_time.elapsed().as_millis();
 
-                    if block.row_count() == 0 {
+                    if rows.is_empty() {
                         return QueryExecutionResult::Select(QueryResult {
                             columns: vec![],
                             rows: vec![],
@@ -96,93 +140,73 @@ impl DatabaseAdapter for ClickHouseAdapter {
                         });
                     }
 
-                    // Get column names
-                    let columns: Vec<String> = block
-                        .columns()
-                        .iter()
-                        .map(|col| col.name().to_string())
+                    // Parse the first row to get column names
+                    // ClickHouse returns data in TSV format by default
+                    let first_row = &rows[0];
+                    let column_count = first_row.split('\t').count();
+                    
+                    // For now, generate generic column names
+                    // In a real implementation, we'd parse the query or use DESCRIBE
+                    let columns: Vec<String> = (0..column_count)
+                        .map(|i| format!("column_{}", i + 1))
                         .collect();
 
-                    // Convert rows to string representation
-                    let mut result_rows = Vec::new();
-                    for row_idx in 0..block.row_count() {
-                        let mut string_row = Vec::new();
-                        for col_idx in 0..block.column_count() {
-                            let value = Self::column_to_string(&block, row_idx, col_idx);
-                            string_row.push(value);
-                        }
-                        result_rows.push(string_row);
-                    }
+                    // Convert rows to Vec<Vec<String>>
+                    let result_rows: Vec<Vec<String>> = rows
+                        .iter()
+                        .map(|row| row.split('\t').map(|s| s.to_string()).collect())
+                        .collect();
 
                     QueryExecutionResult::Select(QueryResult {
                         columns,
                         rows: result_rows,
-                        row_count: block.row_count(),
+                        row_count: rows.len(),
                         execution_time_ms: execution_time,
                     })
-                    },
-                    Err(e) => QueryExecutionResult::Error(format!("Query failed: {}", e)),
-                },
-                Err(e) => QueryExecutionResult::Error(format!("Failed to get client handle: {}", e)),
+                }
+                Err(e) => QueryExecutionResult::Error(format!("Query failed: {}", e)),
             }
         } else {
             // For non-SELECT queries (INSERT, CREATE, etc.)
-            match pool.get_handle().await {
-                Ok(mut client) => match client.execute(sql).await {
+            match client.query(sql).execute().await {
                 Ok(_) => {
                     let execution_time = start_time.elapsed().as_millis();
                     QueryExecutionResult::Modified {
-                        rows_affected: 0, // ClickHouse doesn't provide rows affected for most operations
+                        rows_affected: 0, // ClickHouse doesn't provide rows affected
                         execution_time_ms: execution_time,
                     }
-                    },
-                    Err(e) => QueryExecutionResult::Error(format!("Query failed: {}", e)),
-                },
-                Err(e) => QueryExecutionResult::Error(format!("Failed to get client handle: {}", e)),
+                }
+                Err(e) => QueryExecutionResult::Error(format!("Query failed: {}", e)),
             }
         }
     }
 
     async fn get_tables(&self) -> Result<Vec<TableInfo>> {
-        let pool = self
-            .pool
+        let client = self
+            .client
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Database not connected"))?;
 
         let query = r#"
             SELECT 
-                name as table_name,
-                database as table_schema,
-                engine as table_type
+                name,
+                database,
+                engine
             FROM system.tables
             WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
             ORDER BY database, name
         "#;
 
-        let mut client = pool.get_handle().await?;
-        let block = client.query(query).fetch_all().await?;
+        let rows = client.query(query).fetch_all::<TableRow>().await?;
 
-        let mut tables = Vec::new();
-        for row_idx in 0..block.row_count() {
-            let table_name = match block.get::<String, _>(row_idx, "table_name") {
-                Ok(name) => name,
-                Err(_) => continue,
-            };
-            let table_schema = match block.get::<String, _>(row_idx, "table_schema") {
-                Ok(schema) => schema,
-                Err(_) => "default".to_string(),
-            };
-            let table_type = match block.get::<String, _>(row_idx, "table_type") {
-                Ok(engine) => engine,
-                Err(_) => "TABLE".to_string(),
-            };
-
-            tables.push(TableInfo {
-                table_name,
-                table_schema,
-                table_type,
-            });
-        }
+        let tables = rows
+            .into_iter()
+            .map(|row| TableInfo {
+                table_name: row.name,
+                table_schema: row.database,
+                table_type: row.engine,
+            })
+            .collect();
 
         Ok(tables)
     }
@@ -192,50 +216,51 @@ impl DatabaseAdapter for ClickHouseAdapter {
         table_name: &str,
         table_schema: &str,
     ) -> Result<QueryResult> {
-        let pool = self
-            .pool
+        let client = self
+            .client
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Database not connected"))?;
 
-        let query = format!(r#"
+        let query = r#"
             SELECT 
-                name as column_name,
-                type as data_type,
-                default_expression as column_default,
-                position as ordinal_position
+                name,
+                type,
+                default_expression,
+                position
             FROM system.columns
-            WHERE table = '{}' AND database = '{}'
+            WHERE table = ? AND database = ?
             ORDER BY position
-        "#, table_name, table_schema);
+        "#;
 
-        let mut client = pool.get_handle().await?;
-        let block = client
-            .query(&query)
-            .fetch_all()
+        let rows = client
+            .query(query)
+            .bind(table_name)
+            .bind(table_schema)
+            .fetch_all::<ColumnRow>()
             .await?;
 
-        let mut columns = Vec::new();
-        for row_idx in 0..block.row_count() {
-            let column_name = block.get::<String, _>(row_idx, "column_name").unwrap_or_default();
-            let data_type = block.get::<String, _>(row_idx, "data_type").unwrap_or_default();
-            let column_default = block.get::<String, _>(row_idx, "column_default").ok();
-            let ordinal_position = block.get::<u64, _>(row_idx, "ordinal_position").unwrap_or(0) as i32;
+        let columns: Vec<ColumnInfo> = rows
+            .into_iter()
+            .map(|row| {
+                let is_nullable = if row.data_type.starts_with("Nullable(") {
+                    "YES".to_string()
+                } else {
+                    "NO".to_string()
+                };
 
-            // Check if type is nullable
-            let is_nullable = if data_type.starts_with("Nullable(") {
-                "YES".to_string()
-            } else {
-                "NO".to_string()
-            };
-
-            columns.push(ColumnInfo {
-                column_name,
-                data_type,
-                is_nullable,
-                column_default,
-                ordinal_position,
-            });
-        }
+                ColumnInfo {
+                    column_name: row.name,
+                    data_type: row.data_type,
+                    is_nullable,
+                    column_default: if row.default_expression.is_empty() {
+                        None
+                    } else {
+                        Some(row.default_expression)
+                    },
+                    ordinal_position: row.position as i32,
+                }
+            })
+            .collect();
 
         let column_names = vec![
             "Column Name".to_string(),
@@ -266,14 +291,13 @@ impl DatabaseAdapter for ClickHouseAdapter {
     }
 
     async fn test_connection(&self) -> Result<bool> {
-        let pool = self
-            .pool
+        let client = self
+            .client
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Database not connected"))?;
 
-        let mut client = pool.get_handle().await?;
-        let result = client.query("SELECT 1").fetch_all().await?;
-        Ok(result.row_count() > 0)
+        client.query("SELECT 1").execute().await?;
+        Ok(true)
     }
 
     fn database_type(&self) -> DatabaseType {
