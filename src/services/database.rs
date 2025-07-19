@@ -1,5 +1,5 @@
 use anyhow::Result;
-use async_std::sync::RwLock;
+use tokio::sync::RwLock;
 use std::sync::Arc;
 
 use crate::services::{
