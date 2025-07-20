@@ -1,11 +1,12 @@
-use crate::services::DatabaseManager;
+use crate::services::{DatabaseManager, DatabaseType};
 use gpui::*;
+use gpui::prelude::FluentBuilder;
 use gpui_component::{
     ActiveTheme as _, Disableable, Icon, Sizable as _, StyledExt,
     button::{Button, ButtonVariants as _},
     input::{InputState, TextInput},
     label::Label,
-    v_flex,
+    v_flex, h_flex,
 };
 use std::sync::Arc;
 
@@ -22,16 +23,18 @@ pub struct ConnectionsPanel {
     input_esc: Entity<InputState>,
     is_connected: bool,
     is_loading: bool,
+    selected_db_type: DatabaseType,
 }
 
 impl ConnectionsPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let selected_db_type = DatabaseType::PostgreSQL;
         let input_esc = cx.new(|cx| {
             let mut i = InputState::new(window, cx)
-                .placeholder("Enter DB URL")
+                .placeholder(Self::get_placeholder_for_type(&selected_db_type))
                 .clean_on_escape();
 
-            i.set_value("postgres://test:test@localhost:5432/test", window, cx);
+            i.set_value(Self::get_example_url_for_type(&selected_db_type), window, cx);
             i
         });
 
@@ -40,7 +43,38 @@ impl ConnectionsPanel {
             input_esc,
             is_connected: false,
             is_loading: false,
+            selected_db_type,
         }
+    }
+
+    fn get_placeholder_for_type(db_type: &DatabaseType) -> &'static str {
+        match db_type {
+            DatabaseType::PostgreSQL => "postgres://user:pass@host:port/db",
+            DatabaseType::SQLite => "path/to/database.db or sqlite://path/to/database.db",
+            DatabaseType::ClickHouse => "http://user:pass@host:8123/database",
+        }
+    }
+
+    fn get_example_url_for_type(db_type: &DatabaseType) -> &'static str {
+        match db_type {
+            DatabaseType::PostgreSQL => "postgres://test:test@localhost:5432/test",
+            DatabaseType::SQLite => "test.db",
+            DatabaseType::ClickHouse => "http://default:@localhost:8123/default",
+        }
+    }
+
+    fn select_database_type(
+        &mut self,
+        db_type: DatabaseType,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.selected_db_type = db_type.clone();
+        self.input_esc.update(cx, |input, cx| {
+            input.set_placeholder(Self::get_placeholder_for_type(&db_type), window, cx);
+            input.set_value(Self::get_example_url_for_type(&db_type), window, cx);
+        });
+        cx.notify();
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -135,12 +169,48 @@ impl ConnectionsPanel {
                 .on_click(cx.listener(Self::connect_to_database))
         };
 
+        let db_type_selector = h_flex()
+            .gap_1()
+            .child(
+                Button::new("postgres")
+                    .label("PostgreSQL")
+                    .small()
+                    .when(self.selected_db_type == DatabaseType::PostgreSQL, |b| b.primary())
+                    .when(self.selected_db_type != DatabaseType::PostgreSQL, |b| b.ghost())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.select_database_type(DatabaseType::PostgreSQL, window, cx);
+                    }))
+            )
+            .child(
+                Button::new("sqlite")
+                    .label("SQLite")
+                    .small()
+                    .when(self.selected_db_type == DatabaseType::SQLite, |b| b.primary())
+                    .when(self.selected_db_type != DatabaseType::SQLite, |b| b.ghost())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.select_database_type(DatabaseType::SQLite, window, cx);
+                    }))
+            )
+            .child(
+                Button::new("clickhouse")
+                    .label("ClickHouse")
+                    .small()
+                    .when(self.selected_db_type == DatabaseType::ClickHouse, |b| b.primary())
+                    .when(self.selected_db_type != DatabaseType::ClickHouse, |b| b.ghost())
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.select_database_type(DatabaseType::ClickHouse, window, cx);
+                    }))
+            );
+
         v_flex()
             .gap_2()
             .p_3()
             .border_b_1()
             .border_color(cx.theme().border)
             .child(Label::new("Database Connection").font_bold().text_sm())
+            .child(Label::new("Database Type").text_xs())
+            .child(db_type_selector)
+            .child(Label::new("Connection URL").text_xs())
             .child(TextInput::new(&self.input_esc).cleanable())
             .child(connection_button)
     }
