@@ -6,6 +6,7 @@
 use anyhow::{anyhow, Result};
 
 use super::postgres::PostgresConnection;
+use super::sqlite::SqliteConnection;
 use crate::services::database::traits::{
     BoxedConnection, ConnectionConfig, DatabaseType, SchemaIntrospection,
 };
@@ -57,13 +58,7 @@ impl ConnectionFactory {
                      Please check back after Epic 4 is complete."
                 ))
             }
-            DatabaseType::SQLite => {
-                // Will be implemented in Epic 3
-                Err(anyhow!(
-                    "SQLite support coming soon. \
-                     Please check back after Epic 3 is complete."
-                ))
-            }
+            DatabaseType::SQLite => Ok(SqliteConnection::boxed(config)),
             DatabaseType::ClickHouse => {
                 // Will be implemented in Epic 6
                 Err(anyhow!(
@@ -102,11 +97,9 @@ impl ConnectionFactory {
 
         match config.database_type {
             DatabaseType::PostgreSQL => Ok(Box::new(PostgresConnection::new(config))),
+            DatabaseType::SQLite => Ok(Box::new(SqliteConnection::new(config))),
             DatabaseType::MySQL => {
                 Err(anyhow!("MySQL support coming soon."))
-            }
-            DatabaseType::SQLite => {
-                Err(anyhow!("SQLite support coming soon."))
             }
             DatabaseType::ClickHouse => {
                 Err(anyhow!("ClickHouse support coming soon."))
@@ -129,8 +122,8 @@ impl ConnectionFactory {
     pub fn is_supported(db_type: DatabaseType) -> bool {
         match db_type {
             DatabaseType::PostgreSQL => true,  // Epic 2 - Implemented
+            DatabaseType::SQLite => true,      // Epic 3 - Implemented
             DatabaseType::MySQL => false,      // Epic 4
-            DatabaseType::SQLite => false,     // Epic 3
             DatabaseType::ClickHouse => false, // Epic 6
             DatabaseType::DuckDB => false,     // Epic 5
         }
@@ -163,6 +156,7 @@ impl ConnectionFactory {
 mod tests {
     use super::*;
     use crate::services::database::traits::{ConnectionParams, SslMode};
+    use std::path::PathBuf;
 
     #[test]
     fn test_factory_validates_config() {
@@ -170,7 +164,7 @@ mod tests {
         let config = ConnectionConfig::new(
             "test".to_string(),
             DatabaseType::PostgreSQL,
-            ConnectionParams::file(std::path::PathBuf::from("/tmp/test.db"), false),
+            ConnectionParams::file(PathBuf::from("/tmp/test.db"), false),
         );
 
         let result = ConnectionFactory::create(config);
@@ -198,11 +192,57 @@ mod tests {
     }
 
     #[test]
+    fn test_factory_creates_sqlite_file() {
+        // Valid: SQLite with file params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::SQLite,
+            ConnectionParams::file(PathBuf::from("/tmp/test.db"), false),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_factory_creates_sqlite_memory() {
+        // Valid: SQLite with in-memory params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::SQLite,
+            ConnectionParams::in_memory(),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_factory_rejects_sqlite_server() {
+        // Invalid: SQLite with server params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::SQLite,
+            ConnectionParams::server(
+                "localhost".to_string(),
+                5432,
+                "user".to_string(),
+                "pass".to_string(),
+                "db".to_string(),
+                SslMode::Prefer,
+            ),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_is_supported() {
-        // PostgreSQL is now implemented
+        // PostgreSQL and SQLite are now implemented
         assert!(ConnectionFactory::is_supported(DatabaseType::PostgreSQL));
+        assert!(ConnectionFactory::is_supported(DatabaseType::SQLite));
         assert!(!ConnectionFactory::is_supported(DatabaseType::MySQL));
-        assert!(!ConnectionFactory::is_supported(DatabaseType::SQLite));
         assert!(!ConnectionFactory::is_supported(DatabaseType::ClickHouse));
         assert!(!ConnectionFactory::is_supported(DatabaseType::DuckDB));
     }
@@ -210,8 +250,9 @@ mod tests {
     #[test]
     fn test_supported_types() {
         let supported = ConnectionFactory::supported_types();
-        assert_eq!(supported.len(), 1);
+        assert_eq!(supported.len(), 2);
         assert!(supported.contains(&DatabaseType::PostgreSQL));
+        assert!(supported.contains(&DatabaseType::SQLite));
     }
 
     #[test]
@@ -222,6 +263,11 @@ mod tests {
         // Check PostgreSQL is supported
         let pg = all.iter().find(|(t, _)| *t == DatabaseType::PostgreSQL);
         assert!(pg.is_some());
-        assert!(pg.unwrap().1); // PostgreSQL should be supported
+        assert!(pg.unwrap().1);
+
+        // Check SQLite is supported
+        let sqlite = all.iter().find(|(t, _)| *t == DatabaseType::SQLite);
+        assert!(sqlite.is_some());
+        assert!(sqlite.unwrap().1);
     }
 }

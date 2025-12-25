@@ -12,8 +12,9 @@ pub use manager::DatabaseManager;
 // Re-export driver factory for convenience
 pub use drivers::ConnectionFactory;
 
-// Re-export PostgreSQL driver
+// Re-export database drivers
 pub use drivers::PostgresConnection;
+pub use drivers::SqliteConnection;
 
 // Re-export commonly used trait types
 pub use traits::{
