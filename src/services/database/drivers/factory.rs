@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 
+use super::postgres::PostgresConnection;
 use crate::services::database::traits::{
     BoxedConnection, ConnectionConfig, DatabaseType, SchemaIntrospection,
 };
@@ -48,13 +49,7 @@ impl ConnectionFactory {
         config.validate().map_err(|e| anyhow!(e))?;
 
         match config.database_type {
-            DatabaseType::PostgreSQL => {
-                // Will be implemented in Epic 2
-                Err(anyhow!(
-                    "PostgreSQL driver not yet migrated to new architecture. \
-                     Use DatabaseManager directly for now."
-                ))
-            }
+            DatabaseType::PostgreSQL => Ok(PostgresConnection::boxed(config)),
             DatabaseType::MySQL => {
                 // Will be implemented in Epic 4
                 Err(anyhow!(
@@ -106,11 +101,7 @@ impl ConnectionFactory {
         config.validate().map_err(|e| anyhow!(e))?;
 
         match config.database_type {
-            DatabaseType::PostgreSQL => {
-                Err(anyhow!(
-                    "PostgreSQL driver not yet migrated to new architecture."
-                ))
-            }
+            DatabaseType::PostgreSQL => Ok(Box::new(PostgresConnection::new(config))),
             DatabaseType::MySQL => {
                 Err(anyhow!("MySQL support coming soon."))
             }
@@ -137,8 +128,7 @@ impl ConnectionFactory {
     /// Returns true if the database type has a driver implementation.
     pub fn is_supported(db_type: DatabaseType) -> bool {
         match db_type {
-            // Will be updated as drivers are implemented
-            DatabaseType::PostgreSQL => false, // Epic 2
+            DatabaseType::PostgreSQL => true,  // Epic 2 - Implemented
             DatabaseType::MySQL => false,      // Epic 4
             DatabaseType::SQLite => false,     // Epic 3
             DatabaseType::ClickHouse => false, // Epic 6
@@ -172,7 +162,7 @@ impl ConnectionFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::database::traits::ConnectionParams;
+    use crate::services::database::traits::{ConnectionParams, SslMode};
 
     #[test]
     fn test_factory_validates_config() {
@@ -188,9 +178,29 @@ mod tests {
     }
 
     #[test]
+    fn test_factory_creates_postgres() {
+        // Valid: PostgreSQL with server params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::PostgreSQL,
+            ConnectionParams::server(
+                "localhost".to_string(),
+                5432,
+                "postgres".to_string(),
+                "password".to_string(),
+                "postgres".to_string(),
+                SslMode::Prefer,
+            ),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_is_supported() {
-        // Currently no drivers are implemented
-        assert!(!ConnectionFactory::is_supported(DatabaseType::PostgreSQL));
+        // PostgreSQL is now implemented
+        assert!(ConnectionFactory::is_supported(DatabaseType::PostgreSQL));
         assert!(!ConnectionFactory::is_supported(DatabaseType::MySQL));
         assert!(!ConnectionFactory::is_supported(DatabaseType::SQLite));
         assert!(!ConnectionFactory::is_supported(DatabaseType::ClickHouse));
@@ -198,10 +208,10 @@ mod tests {
     }
 
     #[test]
-    fn test_supported_types_empty() {
-        // Currently no drivers are implemented
+    fn test_supported_types() {
         let supported = ConnectionFactory::supported_types();
-        assert!(supported.is_empty());
+        assert_eq!(supported.len(), 1);
+        assert!(supported.contains(&DatabaseType::PostgreSQL));
     }
 
     #[test]
@@ -209,9 +219,9 @@ mod tests {
         let all = ConnectionFactory::all_types();
         assert_eq!(all.len(), 5);
 
-        // All should be unsupported for now
-        for (_, supported) in all {
-            assert!(!supported);
-        }
+        // Check PostgreSQL is supported
+        let pg = all.iter().find(|(t, _)| *t == DatabaseType::PostgreSQL);
+        assert!(pg.is_some());
+        assert!(pg.unwrap().1); // PostgreSQL should be supported
     }
 }
