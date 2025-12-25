@@ -2,10 +2,12 @@
 
 mod connections;
 mod history;
+mod storage_connections;
 mod types;
 
 pub use connections::ConnectionsRepository;
 pub use history::QueryHistoryRepository;
+pub use storage_connections::StorageConnectionsRepository;
 pub use types::*;
 
 use anyhow::Result;
@@ -71,6 +73,11 @@ impl AppStore {
         QueryHistoryRepository::new(self.pool.clone())
     }
 
+    /// Get a storage connections repository
+    pub fn storage_connections(&self) -> StorageConnectionsRepository {
+        StorageConnectionsRepository::new(self.pool.clone())
+    }
+
     /// Initialize the database schema
     async fn initialize_schema(&self) -> Result<()> {
         sqlx::query(
@@ -122,6 +129,33 @@ impl AppStore {
         sqlx::query(
                 "CREATE INDEX IF NOT EXISTS idx_history_connection ON query_history(connection_id, executed_at DESC)"
             )
+            .execute(&self.pool)
+            .await?;
+
+        // Storage connections table (for S3, GCS, Azure, etc.)
+        sqlx::query(
+            r#"
+                CREATE TABLE IF NOT EXISTS storage_connections (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    storage_type TEXT NOT NULL DEFAULT 's3',
+                    endpoint TEXT,
+                    region TEXT NOT NULL DEFAULT '',
+                    bucket TEXT NOT NULL DEFAULT '',
+                    access_key_id TEXT,
+                    path_style INTEGER NOT NULL DEFAULT 0,
+                    allow_anonymous INTEGER NOT NULL DEFAULT 0,
+                    root_path TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Index for storage connections by name
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_storage_connections_name ON storage_connections(name)")
             .execute(&self.pool)
             .await?;
 

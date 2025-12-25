@@ -5,6 +5,7 @@ mod types;
 
 // New multi-database abstraction modules
 pub mod drivers;
+pub mod storage;
 pub mod traits;
 
 pub use manager::DatabaseManager;
@@ -15,6 +16,11 @@ pub use drivers::ConnectionFactory;
 // Re-export database drivers
 pub use drivers::PostgresConnection;
 pub use drivers::SqliteConnection;
+
+// Re-export storage types
+pub use storage::{
+    ObjectInfo, StorageConfig, StorageFactory, StorageManager, StorageParams, StorageType,
+};
 
 // Re-export commonly used trait types
 pub use traits::{
