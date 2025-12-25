@@ -42,8 +42,27 @@ impl FooterBar {
             _subscriptions,
         }
     }
+
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
+    }
+
+    /// Set the tables panel visibility state.
+    pub fn set_show_tables(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.tables_active = show;
+        cx.notify();
+    }
+
+    /// Set the agent panel visibility state.
+    pub fn set_show_agent(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.agent_active = show;
+        cx.notify();
+    }
+
+    /// Set the history panel visibility state.
+    pub fn set_show_history(&mut self, show: bool, cx: &mut Context<Self>) {
+        self.history_active = show;
+        cx.notify();
     }
 }
 

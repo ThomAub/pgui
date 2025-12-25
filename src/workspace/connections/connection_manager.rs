@@ -8,6 +8,7 @@ use gpui_component::{
 };
 
 use crate::{
+    keybindings::connection::{Connect, DeleteConnection, EditConnection, NewConnection},
     services::ConnectionInfo,
     state::{ConnectionState, connect, delete_connection},
     workspace::connections::{ConnectionForm, ConnectionListDelegate},
@@ -91,6 +92,78 @@ impl ConnectionManager {
         cx.new(|cx| Self::new(window, cx))
     }
 
+    // ========================================================================
+    // Keyboard Action Handlers
+    // ========================================================================
+
+    fn on_connect(&mut self, _: &Connect, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(conn) = self.selected_connection.clone() {
+            self.is_creating = false;
+            self.is_editing = false;
+            cx.update_entity(&self.connection_form, |form, cx| {
+                form.clear(window, cx);
+                cx.notify();
+            });
+            connect(&conn, cx);
+            self.selected_connection = None;
+            cx.notify();
+        }
+    }
+
+    fn on_new_connection(&mut self, _: &NewConnection, window: &mut Window, cx: &mut Context<Self>) {
+        self.is_creating = true;
+        self.is_editing = false;
+        self.selected_connection = None;
+        cx.update_entity(&self.connection_form, |form, cx| {
+            form.clear(window, cx);
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    fn on_edit_connection(&mut self, _: &EditConnection, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.selected_connection.is_some() {
+            self.is_editing = true;
+            cx.notify();
+        }
+    }
+
+    fn on_delete_connection(&mut self, _: &DeleteConnection, window: &mut Window, cx: &mut Context<Self>) {
+        if self.selected_connection.is_some() {
+            let connection_form_clone = self.connection_form.clone();
+            let connection_clone = self.selected_connection.clone();
+            let manager = cx.entity();
+
+            window.open_dialog(cx, move |dialog, _win, _cx| {
+                let form_clone = connection_form_clone.clone();
+                let conn_clone = connection_clone.clone();
+                let manager_clone = manager.clone();
+
+                dialog
+                    .confirm()
+                    .child("Are you sure you want to delete this connection?")
+                    .on_ok(move |_, window, cx| {
+                        cx.update_entity(&form_clone, |form, cx| {
+                            form.clear(window, cx);
+                            cx.notify();
+                        });
+
+                        if let Some(conn) = conn_clone.clone() {
+                            delete_connection(conn, cx);
+                        }
+
+                        cx.update_entity(&manager_clone.clone(), |manager, cx| {
+                            manager.selected_connection = None;
+                            cx.notify();
+                        });
+
+                        window.push_notification("Deleted", cx);
+                        true
+                    })
+            });
+        }
+    }
+
     fn render_connections_list(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let title = div()
             .pl_1()
@@ -145,6 +218,11 @@ impl Render for ConnectionManager {
             .border_color(cx.theme().border)
             .border_r_1()
             .min_w(px(300.0))
+            // Register keyboard action handlers
+            .on_action(cx.listener(Self::on_connect))
+            .on_action(cx.listener(Self::on_new_connection))
+            .on_action(cx.listener(Self::on_edit_connection))
+            .on_action(cx.listener(Self::on_delete_connection))
             .child(self.render_connections_list(cx));
 
         let show_wecome = self.selected_connection.clone().is_none()

@@ -216,6 +216,11 @@ impl Editor {
     }
 
     pub fn format_query(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.do_format_query(window, cx);
+    }
+
+    /// Format the query (callable without ClickEvent).
+    pub fn do_format_query(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.is_formatting = true;
         cx.notify();
 
@@ -230,6 +235,11 @@ impl Editor {
     }
 
     pub fn execute_query(&mut self, _: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.do_execute_query(cx);
+    }
+
+    /// Execute the current query (callable without ClickEvent).
+    pub fn do_execute_query(&mut self, cx: &mut Context<Self>) {
         let cursor = self.input_state.read(cx).cursor();
         self.current_query_index = self.find_query_at_cursor(cursor);
 

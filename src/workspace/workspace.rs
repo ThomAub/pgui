@@ -3,9 +3,11 @@ use super::editor::Editor;
 use super::editor::EditorEvent;
 use super::footer_bar::{FooterBar, FooterBarEvent};
 use super::header_bar::HeaderBar;
+use super::help_overlay::HelpOverlay;
 use super::storage::{StorageBrowser, StorageManager as StorageManagerPanel};
 use super::tables::{TableEvent, TablesTree};
 
+use crate::keybindings::{self, global, focus, editor as editor_actions};
 use crate::services::AppStore;
 use crate::services::{ErrorResult, QueryExecutionResult, TableInfo};
 use crate::state::{ConnectionState, ConnectionStatus, StorageConnectionStatus, StorageState};
@@ -31,6 +33,18 @@ pub enum WorkspaceMode {
     Database,
     /// Storage browser mode (S3, etc.).
     Storage,
+}
+
+/// Currently focused panel in the workspace.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FocusedPanel {
+    Editor,
+    Tables,
+    Results,
+    Agent,
+    History,
+    ConnectionList,
+    StorageBrowser,
 }
 
 pub struct Workspace {
@@ -61,6 +75,11 @@ pub struct Workspace {
     show_tables: bool,
     show_agent: bool,
     show_history: bool,
+
+    /// Whether to show the help overlay.
+    show_help: bool,
+    /// Currently focused panel.
+    focused_panel: Option<FocusedPanel>,
 }
 
 impl Workspace {
@@ -150,7 +169,135 @@ impl Workspace {
             show_tables: true,
             show_agent: false,
             show_history: false,
+            show_help: false,
+            focused_panel: None,
         }
+    }
+
+    // ========================================================================
+    // Keyboard Action Handlers
+    // ========================================================================
+
+    fn on_switch_to_database(&mut self, _: &global::SwitchToDatabase, _window: &mut Window, cx: &mut Context<Self>) {
+        self.mode = WorkspaceMode::Database;
+        cx.notify();
+    }
+
+    fn on_switch_to_storage(&mut self, _: &global::SwitchToStorage, _window: &mut Window, cx: &mut Context<Self>) {
+        self.mode = WorkspaceMode::Storage;
+        cx.notify();
+    }
+
+    fn on_toggle_sidebar(&mut self, _: &global::ToggleSidebar, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_tables = !self.show_tables;
+        // Update footer bar state
+        self.footer_bar.update(cx, |footer, cx| {
+            footer.set_show_tables(self.show_tables, cx);
+        });
+        cx.notify();
+    }
+
+    fn on_toggle_right_panel(&mut self, _: &global::ToggleRightPanel, _window: &mut Window, cx: &mut Context<Self>) {
+        // Toggle between agent and history (or close if one is open)
+        if self.show_agent {
+            self.show_agent = false;
+        } else if self.show_history {
+            self.show_history = false;
+        } else {
+            // Open agent panel by default
+            self.show_agent = true;
+        }
+        cx.notify();
+    }
+
+    fn on_toggle_history(&mut self, _: &global::ToggleHistory, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_history = !self.show_history;
+        if self.show_history {
+            self.show_agent = false; // They're mutually exclusive
+        }
+        // Update footer bar state
+        self.footer_bar.update(cx, |footer, cx| {
+            footer.set_show_history(self.show_history, cx);
+        });
+        cx.notify();
+    }
+
+    fn on_toggle_agent(&mut self, _: &global::ToggleAgent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_agent = !self.show_agent;
+        if self.show_agent {
+            self.show_history = false; // They're mutually exclusive
+        }
+        // Update footer bar state
+        self.footer_bar.update(cx, |footer, cx| {
+            footer.set_show_agent(self.show_agent, cx);
+        });
+        cx.notify();
+    }
+
+    fn on_show_help(&mut self, _: &global::ShowHelp, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_help = true;
+        cx.notify();
+    }
+
+    fn on_hide_help(&mut self, _: &global::HideHelp, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_help = false;
+        cx.notify();
+    }
+
+    fn on_escape(&mut self, _: &global::Escape, _window: &mut Window, cx: &mut Context<Self>) {
+        // Close help overlay if open
+        if self.show_help {
+            self.show_help = false;
+            cx.notify();
+            return;
+        }
+        // Clear focus
+        self.focused_panel = None;
+        cx.notify();
+    }
+
+    fn on_focus_tables(&mut self, _: &focus::FocusTables, _window: &mut Window, cx: &mut Context<Self>) {
+        self.focused_panel = Some(FocusedPanel::Tables);
+        self.show_tables = true;
+        cx.notify();
+    }
+
+    fn on_focus_results(&mut self, _: &focus::FocusResults, _window: &mut Window, cx: &mut Context<Self>) {
+        self.focused_panel = Some(FocusedPanel::Results);
+        cx.notify();
+    }
+
+    fn on_focus_agent(&mut self, _: &focus::FocusAgent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.focused_panel = Some(FocusedPanel::Agent);
+        self.show_agent = true;
+        self.show_history = false;
+        cx.notify();
+    }
+
+    fn on_focus_history(&mut self, _: &focus::FocusHistory, _window: &mut Window, cx: &mut Context<Self>) {
+        self.focused_panel = Some(FocusedPanel::History);
+        self.show_history = true;
+        self.show_agent = false;
+        cx.notify();
+    }
+
+    fn on_focus_editor(&mut self, _: &editor_actions::FocusEditor, _window: &mut Window, cx: &mut Context<Self>) {
+        self.focused_panel = Some(FocusedPanel::Editor);
+        cx.notify();
+    }
+
+    fn on_execute_query(&mut self, _: &editor_actions::ExecuteQuery, _window: &mut Window, cx: &mut Context<Self>) {
+        // Trigger query execution from editor
+        self.editor.update(cx, |editor, cx| {
+            editor.do_execute_query(cx);
+        });
+    }
+
+    fn on_format_query(&mut self, _: &editor_actions::FormatQuery, window: &mut Window, cx: &mut Context<Self>) {
+        // Trigger format from editor
+        self.editor.update(cx, |editor, cx| {
+            editor.do_format_query(window, cx);
+        });
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -456,6 +603,23 @@ impl Render for Workspace {
             .flex()
             .flex_col()
             .size_full()
+            // Register keyboard action handlers
+            .on_action(cx.listener(Self::on_switch_to_database))
+            .on_action(cx.listener(Self::on_switch_to_storage))
+            .on_action(cx.listener(Self::on_toggle_sidebar))
+            .on_action(cx.listener(Self::on_toggle_right_panel))
+            .on_action(cx.listener(Self::on_toggle_history))
+            .on_action(cx.listener(Self::on_toggle_agent))
+            .on_action(cx.listener(Self::on_show_help))
+            .on_action(cx.listener(Self::on_hide_help))
+            .on_action(cx.listener(Self::on_escape))
+            .on_action(cx.listener(Self::on_focus_tables))
+            .on_action(cx.listener(Self::on_focus_results))
+            .on_action(cx.listener(Self::on_focus_agent))
+            .on_action(cx.listener(Self::on_focus_history))
+            .on_action(cx.listener(Self::on_focus_editor))
+            .on_action(cx.listener(Self::on_execute_query))
+            .on_action(cx.listener(Self::on_format_query))
             .child(self.header_bar.clone())
             .child(self.render_mode_tabs(cx))
             .child(content)
@@ -463,5 +627,9 @@ impl Render for Workspace {
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))
+            // Help overlay (rendered on top when visible)
+            .when(self.show_help, |el| {
+                el.child(HelpOverlay::new())
+            })
     }
 }

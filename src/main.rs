@@ -1,4 +1,5 @@
 mod assets;
+mod keybindings;
 mod services;
 mod state;
 mod themes;
@@ -64,6 +65,9 @@ fn main() {
         // Close app w/ cmd-q
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+
+        // Initialize keyboard navigation
+        keybindings::init(cx);
 
         // Bring app to front
         cx.activate(true);
