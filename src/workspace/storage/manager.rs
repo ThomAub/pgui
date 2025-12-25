@@ -1,0 +1,333 @@
+//! Storage connection manager panel.
+//!
+//! Main UI for managing storage connections when not connected.
+
+use gpui::{prelude::FluentBuilder as _, *};
+use gpui_component::{
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, WindowExt as _,
+    button::{Button, ButtonVariants as _},
+    label::Label,
+    list::{List, ListEvent, ListState},
+    v_flex,
+};
+
+use crate::{
+    services::database::storage::StorageConfig,
+    state::{delete_storage_connection, storage_connect, StorageState},
+    workspace::storage::{StorageConnectionForm, StorageConnectionListDelegate},
+};
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Main manager panel for storage connections.
+pub struct StorageManager {
+    is_creating: bool,
+    is_editing: bool,
+    selected_connection: Option<StorageConfig>,
+    connection_form: Entity<StorageConnectionForm>,
+    connection_list: Entity<ListState<StorageConnectionListDelegate>>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl StorageManager {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let connection_list =
+            cx.new(|cx| ListState::new(StorageConnectionListDelegate::new(), window, cx));
+
+        let conn_list_clone = connection_list.clone();
+        let _subscriptions = vec![
+            cx.observe_global::<StorageState>(move |_this, cx| {
+                let conns = cx.global::<StorageState>().saved_connections.clone();
+                let _ = cx.update_entity(&conn_list_clone, |list, cx| {
+                    list.delegate_mut().update_connections(conns);
+                    cx.notify();
+                });
+
+                cx.notify();
+            }),
+            cx.subscribe_in(
+                &connection_list.clone(),
+                window,
+                |this, list, evt, win, cx| {
+                    if let ListEvent::Confirm(ix) = evt.clone() {
+                        let list_del = list.read(cx).delegate();
+                        if let Some(conn) = list_del.matched_connections.clone().get(ix.row) {
+                            this.selected_connection = Some(conn.clone());
+                            this.is_creating = false;
+                            this.is_editing = false;
+                            cx.notify();
+
+                            let _ = cx.update_entity(&this.connection_form.clone(), |form, cx| {
+                                form.set_connection(conn.clone(), win, cx);
+                                cx.notify();
+                            });
+                        }
+                    }
+                },
+            ),
+        ];
+
+        let connection_form = StorageConnectionForm::view(None, window, cx);
+
+        Self {
+            is_creating: false,
+            is_editing: false,
+            selected_connection: None,
+            connection_form,
+            connection_list,
+            _subscriptions,
+        }
+    }
+
+    pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx))
+    }
+
+    fn render_connections_list(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let title = div()
+            .pl_1()
+            .flex()
+            .flex_row()
+            .w_full()
+            .justify_between()
+            .items_center()
+            .child(Label::new("Storage Connections").font_bold().text_base())
+            .child(
+                Button::new("new")
+                    .icon(Icon::empty().path("icons/plus.svg"))
+                    .tooltip("New Storage Connection")
+                    .ghost()
+                    .small()
+                    .on_click(cx.listener(|this, _evt, win, cx| {
+                        this.is_creating = true;
+                        this.is_editing = false;
+                        this.selected_connection = None;
+                        cx.update_entity(&this.connection_form, |form, cx| {
+                            form.clear(win, cx);
+                            cx.notify();
+                        });
+                        cx.notify();
+                    })),
+            );
+
+        v_flex()
+            .gap_2()
+            .p_2()
+            .flex_1()
+            .items_start()
+            .child(title)
+            .child(
+                List::new(&self.connection_list)
+                    .p(px(8.))
+                    .flex_1()
+                    .w_full()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(cx.theme().radius),
+            )
+    }
+}
+
+impl Render for StorageManager {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sidebar = div()
+            .id("storage-manager-sidebar")
+            .flex()
+            .flex_1()
+            .bg(cx.theme().sidebar)
+            .border_color(cx.theme().border)
+            .border_r_1()
+            .min_w(px(300.0))
+            .child(self.render_connections_list(cx));
+
+        let show_welcome = self.selected_connection.clone().is_none()
+            && !self.is_creating
+            && !self.is_editing;
+
+        let show_connection_info = self.selected_connection.clone().is_some()
+            && !self.is_creating
+            && !self.is_editing;
+
+        let show_form = self.is_editing || self.is_creating;
+
+        let main = div()
+            .id("storage-manager-main")
+            .flex()
+            .bg(cx.theme().tiles)
+            .flex_col()
+            .w_full()
+            .p_4()
+            .when(show_connection_info, |d| {
+                let conn = self.selected_connection.clone().unwrap();
+                let conn_name = conn.name.clone();
+                let storage_type = conn.storage_type.display_name();
+                let description = match &conn.params {
+                    crate::services::database::storage::StorageParams::S3 {
+                        bucket, region, ..
+                    } => format!("s3://{} ({})", bucket, region),
+                    crate::services::database::storage::StorageParams::LocalFs { root_path } => {
+                        root_path.display().to_string()
+                    }
+                    crate::services::database::storage::StorageParams::Gcs { bucket, .. } => {
+                        format!("gs://{}", bucket)
+                    }
+                    crate::services::database::storage::StorageParams::AzureBlob {
+                        container,
+                        ..
+                    } => format!("azure://{}", container),
+                };
+
+                d.flex().justify_center().items_center().child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .items_center()
+                        .child(
+                            Icon::new(IconName::Cloud)
+                                .size_12()
+                                .text_color(cx.theme().muted_foreground),
+                        )
+                        .child(div().text_xl().child(conn_name))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(storage_type),
+                        )
+                        .child(div().text_lg().child(description))
+                        .child(
+                            div()
+                                .flex()
+                                .justify_center()
+                                .gap_1()
+                                .mt_4()
+                                .child(
+                                    Button::new("delete")
+                                        .label("Delete")
+                                        .icon(Icon::empty().path("icons/trash.svg"))
+                                        .tooltip("Delete")
+                                        .ghost()
+                                        .small()
+                                        .on_click(cx.listener(|this, _evt, win, cx| {
+                                            this.is_creating = false;
+                                            this.is_editing = false;
+
+                                            let connection_form_clone = this.connection_form.clone();
+                                            let connection_clone = this.selected_connection.clone();
+                                            let manager = cx.entity();
+
+                                            win.open_dialog(cx, move |dialog, _win, _cx| {
+                                                let form_clone = connection_form_clone.clone();
+                                                let conn_clone = connection_clone.clone();
+                                                let manager_clone = manager.clone();
+
+                                                dialog
+                                                    .confirm()
+                                                    .child("Are you sure you want to delete this storage connection?")
+                                                    .on_ok(move |_, window, cx| {
+                                                        cx.update_entity(&form_clone, |form, cx| {
+                                                            form.clear(window, cx);
+                                                            cx.notify();
+                                                        });
+
+                                                        if let Some(conn) = conn_clone.clone() {
+                                                            delete_storage_connection(conn, cx);
+                                                        }
+
+                                                        cx.update_entity(&manager_clone.clone(), |manager, cx| {
+                                                            manager.selected_connection = None;
+                                                            cx.notify();
+                                                        });
+
+                                                        window.push_notification("Deleted", cx);
+                                                        true
+                                                    })
+                                            });
+                                        })),
+                                )
+                                .child(
+                                    Button::new("edit")
+                                        .label("Edit")
+                                        .icon(Icon::empty().path("icons/pencil-line.svg"))
+                                        .tooltip("Edit")
+                                        .ghost()
+                                        .small()
+                                        .on_click(cx.listener(|this, _evt, _win, cx| {
+                                            this.is_editing = true;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("connect")
+                                        .label("Connect")
+                                        .icon(Icon::empty().path("icons/cable.svg"))
+                                        .tooltip("Connect")
+                                        .ghost()
+                                        .small()
+                                        .on_click(cx.listener(|this, _evt, win, cx| {
+                                            this.is_creating = false;
+                                            this.is_editing = false;
+
+                                            cx.update_entity(&this.connection_form, |form, cx| {
+                                                form.clear(win, cx);
+                                                cx.notify();
+                                            });
+
+                                            if let Some(conn) = this.selected_connection.clone() {
+                                                storage_connect(&conn, cx);
+                                            }
+
+                                            this.selected_connection = None;
+                                            cx.notify();
+                                        })),
+                                ),
+                        ),
+                )
+            })
+            .when(show_form, |d| d.child(self.connection_form.clone()))
+            .when(show_welcome, |d| {
+                let version = div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap_1()
+                    .text_xs()
+                    .opacity(0.6)
+                    .child(format!("Version: {}", VERSION))
+                    .child(Icon::new(IconName::Heart).xsmall());
+
+                d.flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        v_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(IconName::Cloud)
+                                    .size_12()
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(div().text_lg().child("Storage Browser"))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Browse S3, GCS, Azure, and local files"),
+                            )
+                            .child(
+                                div()
+                                    .mt_2()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Create or select a storage connection"),
+                            )
+                            .child(version),
+                    )
+            });
+
+        div().flex().flex_1().child(sidebar).child(main)
+    }
+}

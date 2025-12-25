@@ -11,6 +11,7 @@ pub use sql::SqlCompletionProvider;
 #[allow(unused_imports)]
 pub use storage::{
     AppStore, ConnectionInfo, ConnectionsRepository, QueryHistoryRepository, SslMode,
+    StorageConnectionsRepository,
 };
 
 pub use updates::check_for_update;
