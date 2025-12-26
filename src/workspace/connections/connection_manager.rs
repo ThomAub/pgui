@@ -223,20 +223,17 @@ impl Render for ConnectionManager {
             .border_color(cx.theme().border)
             .border_r_1()
             .min_w(px(300.0))
-            // Register keyboard action handlers (feature-gated)
-            .when_some(
-                #[cfg(feature = "keyboard-nav")]
-                Some(()),
-                #[cfg(not(feature = "keyboard-nav"))]
-                None::<()>,
-                |el, _| {
-                    el.on_action(cx.listener(Self::on_connect))
-                        .on_action(cx.listener(Self::on_new_connection))
-                        .on_action(cx.listener(Self::on_edit_connection))
-                        .on_action(cx.listener(Self::on_delete_connection))
-                },
-            )
             .child(self.render_connections_list(cx));
+
+        // Register keyboard action handlers (feature-gated)
+        #[cfg(feature = "keyboard-nav")]
+        let sidebar = sidebar
+            .on_action(cx.listener(Self::on_connect))
+            .on_action(cx.listener(Self::on_new_connection))
+            .on_action(cx.listener(Self::on_edit_connection))
+            .on_action(cx.listener(Self::on_delete_connection));
+
+        let sidebar = sidebar;
 
         let show_wecome = self.selected_connection.clone().is_none()
             && !self.is_creating.clone()

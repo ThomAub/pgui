@@ -4,10 +4,10 @@
 //! the lifecycle of connections and providing a unified API for storage operations.
 
 use anyhow::{anyhow, Result};
+use async_lock::RwLock;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::factory::StorageFactory;
 use super::traits::BoxedStorageConnection;

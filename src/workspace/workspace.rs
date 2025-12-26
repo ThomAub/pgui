@@ -456,7 +456,7 @@ impl Workspace {
                         h_flex()
                             .gap_1()
                             .items_center()
-                            .child(Icon::new(IconName::Database).size_4())
+                            .child(Icon::empty().path("icons/database.svg").size_4())
                             .child("Database"),
                     )
                     .small()
@@ -473,7 +473,7 @@ impl Workspace {
                         h_flex()
                             .gap_1()
                             .items_center()
-                            .child(Icon::new(IconName::Cloud).size_4())
+                            .child(Icon::empty().path("icons/cloud-download.svg").size_4())
                             .child("Storage"),
                     )
                     .small()
@@ -627,48 +627,48 @@ impl Render for Workspace {
         #[cfg(not(feature = "keyboard-nav"))]
         let show_help = false;
 
-        div()
+        let root = div()
             .flex()
             .flex_col()
-            .size_full()
-            // Register keyboard action handlers (feature-gated)
-            .when_some(
-                #[cfg(feature = "keyboard-nav")]
-                Some(()),
-                #[cfg(not(feature = "keyboard-nav"))]
-                None::<()>,
-                |el, _| {
-                    el.on_action(cx.listener(Self::on_switch_to_database))
-                        .on_action(cx.listener(Self::on_switch_to_storage))
-                        .on_action(cx.listener(Self::on_toggle_sidebar))
-                        .on_action(cx.listener(Self::on_toggle_right_panel))
-                        .on_action(cx.listener(Self::on_toggle_history))
-                        .on_action(cx.listener(Self::on_toggle_agent))
-                        .on_action(cx.listener(Self::on_show_help))
-                        .on_action(cx.listener(Self::on_hide_help))
-                        .on_action(cx.listener(Self::on_escape))
-                        .on_action(cx.listener(Self::on_focus_tables))
-                        .on_action(cx.listener(Self::on_focus_results))
-                        .on_action(cx.listener(Self::on_focus_agent))
-                        .on_action(cx.listener(Self::on_focus_history))
-                        .on_action(cx.listener(Self::on_focus_editor))
-                        .on_action(cx.listener(Self::on_execute_query))
-                        .on_action(cx.listener(Self::on_format_query))
-                },
-            )
+            .size_full();
+
+        // Register keyboard action handlers (feature-gated)
+        #[cfg(feature = "keyboard-nav")]
+        let root = root
+            .on_action(cx.listener(Self::on_switch_to_database))
+            .on_action(cx.listener(Self::on_switch_to_storage))
+            .on_action(cx.listener(Self::on_toggle_sidebar))
+            .on_action(cx.listener(Self::on_toggle_right_panel))
+            .on_action(cx.listener(Self::on_toggle_history))
+            .on_action(cx.listener(Self::on_toggle_agent))
+            .on_action(cx.listener(Self::on_show_help))
+            .on_action(cx.listener(Self::on_hide_help))
+            .on_action(cx.listener(Self::on_escape))
+            .on_action(cx.listener(Self::on_focus_tables))
+            .on_action(cx.listener(Self::on_focus_results))
+            .on_action(cx.listener(Self::on_focus_agent))
+            .on_action(cx.listener(Self::on_focus_history))
+            .on_action(cx.listener(Self::on_focus_editor))
+            .on_action(cx.listener(Self::on_execute_query))
+            .on_action(cx.listener(Self::on_format_query));
+
+        let root = root
             .child(self.header_bar.clone())
             .child(self.render_mode_tabs(cx))
             .child(content)
             .child(self.footer_bar.clone())
             .children(Root::render_dialog_layer(window, cx))
             .children(Root::render_sheet_layer(window, cx))
-            .children(Root::render_notification_layer(window, cx))
-            // Help overlay (rendered on top when visible)
-            .when(show_help, |el| {
-                #[cfg(feature = "keyboard-nav")]
-                return el.child(HelpOverlay::new());
-                #[cfg(not(feature = "keyboard-nav"))]
-                return el;
-            })
+            .children(Root::render_notification_layer(window, cx));
+
+        // Help overlay (rendered on top when visible)
+        #[cfg(feature = "keyboard-nav")]
+        let root = if show_help {
+            root.child(HelpOverlay::new())
+        } else {
+            root
+        };
+
+        root
     }
 }

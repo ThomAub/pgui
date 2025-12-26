@@ -15,9 +15,8 @@ use futures::stream::BoxStream;
 use futures::StreamExt;
 use opendal::layers::LoggingLayer;
 use opendal::services::S3;
-use opendal::{EntryMode, Metakey, Operator};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use opendal::{EntryMode, Operator};
+use async_lock::RwLock;
 
 use super::traits::StorageConnection;
 use super::types::{ObjectInfo, StorageConfig, StorageParams, StorageType};
@@ -158,7 +157,7 @@ impl S3Storage {
                 Some(metadata.content_length())
             },
             last_modified: metadata.last_modified().map(|t| {
-                DateTime::<Utc>::from_timestamp(t.unix_timestamp(), 0).unwrap_or_default()
+                DateTime::<Utc>::from_timestamp(t.timestamp(), 0).unwrap_or_default()
             }),
             content_type: metadata.content_type().map(|s| s.to_string()),
             etag: metadata.etag().map(|s| s.to_string()),
@@ -219,10 +218,9 @@ impl StorageConnection for S3Storage {
         let op = self.get_operator().await?;
         let path = Self::normalize_path(path);
 
-        // List with metadata
+        // List with metadata (OpenDAL 0.51+ returns metadata automatically)
         let mut lister = op
             .lister_with(path)
-            .metakey(Metakey::ContentLength | Metakey::LastModified | Metakey::ContentType)
             .await?;
 
         let mut objects = Vec::new();
@@ -257,7 +255,6 @@ impl StorageConnection for S3Storage {
         let mut lister = op
             .lister_with(path)
             .recursive(true)
-            .metakey(Metakey::ContentLength | Metakey::LastModified | Metakey::ContentType)
             .await?;
 
         let mut objects = Vec::new();

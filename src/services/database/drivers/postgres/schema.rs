@@ -9,7 +9,7 @@ use sqlx::{PgPool, Row};
 
 use super::connection::PostgresConnection;
 use crate::services::database::traits::{
-    ColumnDetail, ConstraintInfo, DatabaseInfo, DatabaseSchema, ForeignKeyInfo, IndexInfo,
+    ColumnDetail, ConstraintInfo, DatabaseConnection, DatabaseInfo, DatabaseSchema, ForeignKeyInfo, IndexInfo,
     SchemaIntrospection, TableInfo, TableSchema,
 };
 

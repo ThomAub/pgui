@@ -11,9 +11,9 @@ use futures::stream::BoxStream;
 use futures::StreamExt;
 use opendal::layers::LoggingLayer;
 use opendal::services::Fs;
-use opendal::{EntryMode, Metakey, Operator};
+use opendal::{EntryMode, Operator};
 use std::path::PathBuf;
-use tokio::sync::RwLock;
+use async_lock::RwLock;
 
 use super::traits::StorageConnection;
 use super::types::{ObjectInfo, StorageConfig, StorageParams, StorageType};
@@ -106,7 +106,7 @@ impl LocalFsStorage {
                 Some(metadata.content_length())
             },
             last_modified: metadata.last_modified().map(|t| {
-                DateTime::<Utc>::from_timestamp(t.unix_timestamp(), 0).unwrap_or_default()
+                DateTime::<Utc>::from_timestamp(t.timestamp(), 0).unwrap_or_default()
             }),
             content_type: metadata.content_type().map(|s| s.to_string()),
             etag: None,
@@ -169,7 +169,6 @@ impl StorageConnection for LocalFsStorage {
 
         let mut lister = op
             .lister_with(path)
-            .metakey(Metakey::ContentLength | Metakey::LastModified | Metakey::ContentType)
             .await?;
 
         let mut objects = Vec::new();
@@ -204,7 +203,6 @@ impl StorageConnection for LocalFsStorage {
         let mut lister = op
             .lister_with(path)
             .recursive(true)
-            .metakey(Metakey::ContentLength | Metakey::LastModified | Metakey::ContentType)
             .await?;
 
         let mut objects = Vec::new();

@@ -189,17 +189,17 @@ impl StorageBrowser {
     }
 
     /// Get the icon for an object.
-    fn get_object_icon(object: &ObjectInfo) -> IconName {
+    fn get_object_icon(object: &ObjectInfo) -> Icon {
         if object.is_dir {
-            IconName::Folder
+            Icon::new(IconName::Folder)
         } else if object.is_image() {
-            IconName::Image
+            Icon::new(IconName::Frame) // Use Frame for image files
         } else if object.is_data_file() {
-            IconName::Frame
+            Icon::new(IconName::Frame)
         } else if object.is_previewable() {
-            IconName::FileText
+            Icon::new(IconName::File) // Use File for text files
         } else {
-            IconName::File
+            Icon::new(IconName::File)
         }
     }
 
@@ -234,7 +234,7 @@ impl StorageBrowser {
                         )
                     })
                     .child(
-                        Button::new(format!("breadcrumb-{}", i))
+                        Button::new(("breadcrumb", i))
                             .ghost()
                             .small()
                             .child(name.clone())
@@ -328,7 +328,7 @@ impl StorageBrowser {
                             .items_center()
                             .gap_2()
                             .text_color(text_color)
-                            .child(Icon::new(icon).size_4().text_color(text_color.opacity(0.7)))
+                            .child(icon.size_4().text_color(text_color.opacity(0.7)))
                             .child(
                                 Label::new(truncate(&object.name, 40))
                                     .font_medium()
@@ -384,9 +384,9 @@ impl StorageBrowser {
                 .justify_center()
                 .gap_2()
                 .child(
-                    Icon::new(IconName::AlertCircle)
+                    Icon::new(IconName::TriangleAlert)
                         .size_8()
-                        .text_color(cx.theme().destructive),
+                        .text_color(cx.theme().danger),
                 )
                 .child(Label::new("Failed to load").font_semibold())
                 .child(
@@ -414,20 +414,19 @@ impl StorageBrowser {
                 .into_any_element();
         }
 
-        div()
+        let mut container = div()
             .flex()
             .flex_col()
             .flex_1()
-            .overflow_y_scroll()
+            .overflow_hidden()
             .p_2()
-            .gap_1()
-            .children(
-                self.objects
-                    .iter()
-                    .enumerate()
-                    .map(|(ix, obj)| self.render_object_item(ix, obj, cx)),
-            )
-            .into_any_element()
+            .gap_1();
+
+        for (ix, obj) in self.objects.iter().enumerate() {
+            container = container.child(self.render_object_item(ix, obj, cx));
+        }
+
+        container.into_any_element()
     }
 
     /// Render the details panel for the selected object.
@@ -464,7 +463,7 @@ impl StorageBrowser {
                     .gap_2()
                     .items_center()
                     .child(
-                        Icon::new(icon)
+                        icon
                             .size_12()
                             .text_color(cx.theme().muted_foreground),
                     )

@@ -34,7 +34,7 @@ impl EventEmitter<StorageConnectionFormEvent> for StorageConnectionForm {}
 pub struct StorageConnectionForm {
     // Common fields
     name: Entity<InputState>,
-    storage_type: Entity<SelectState<StorageTypeItem>>,
+    storage_type: Entity<SelectState<Vec<StorageTypeItem>>>,
 
     // S3 fields
     endpoint: Entity<InputState>,
@@ -496,9 +496,9 @@ impl Render for StorageConnectionForm {
         };
 
         // Update selected type from select state
-        if let Some(selected) = self.storage_type.read(cx).selected_item() {
-            if selected.0 != self.selected_type {
-                self.selected_type = selected.0;
+        if let Some(selected_value) = self.storage_type.read(cx).selected_value() {
+            if *selected_value != self.selected_type {
+                self.selected_type = *selected_value;
             }
         }
 

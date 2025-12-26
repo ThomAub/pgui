@@ -211,12 +211,15 @@ impl ConnectionForm {
             Some(ConnectionInfo {
                 id: self.active_connection.clone().unwrap().id,
                 name: name.to_string(),
+                database_type: self.active_connection.clone().unwrap().database_type,
                 hostname: hostname.to_string(),
                 username: username.to_string(),
                 password: password.to_string(),
                 database: database.to_string(),
                 port: port_num,
                 ssl_mode: SslMode::Prefer,
+                file_path: None,
+                read_only: false,
             })
         } else {
             Some(ConnectionInfo::new(

@@ -33,12 +33,12 @@ impl StorageConnectionListItem {
         }
     }
 
-    fn get_icon(&self) -> IconName {
+    fn get_icon(&self) -> Icon {
         match self.connection.storage_type {
-            StorageType::S3 => IconName::Cloud,
-            StorageType::Gcs => IconName::Cloud,
-            StorageType::AzureBlob => IconName::Cloud,
-            StorageType::LocalFs => IconName::Folder,
+            StorageType::S3 => Icon::empty().path("icons/cloud-download.svg"),
+            StorageType::Gcs => Icon::empty().path("icons/cloud-download.svg"),
+            StorageType::AzureBlob => Icon::empty().path("icons/cloud-download.svg"),
+            StorageType::LocalFs => Icon::new(IconName::Folder),
         }
     }
 }
@@ -85,6 +85,8 @@ impl RenderOnce for StorageConnectionListItem {
             }
         };
 
+        let icon = self.get_icon();
+
         self.base
             .px_3()
             .py_2()
@@ -102,7 +104,7 @@ impl RenderOnce for StorageConnectionListItem {
                     .gap_3()
                     .text_color(text_color)
                     .child(
-                        Icon::new(self.get_icon())
+                        icon
                             .size_4()
                             .text_color(text_color.opacity(0.7)),
                     )
