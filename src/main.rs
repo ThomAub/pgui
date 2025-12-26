@@ -1,4 +1,5 @@
 mod assets;
+#[cfg(feature = "keyboard-nav")]
 mod keybindings;
 mod services;
 mod state;
@@ -66,7 +67,8 @@ fn main() {
         cx.on_action(|_: &Quit, cx| cx.quit());
         cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
 
-        // Initialize keyboard navigation
+        // Initialize keyboard navigation (feature-gated)
+        #[cfg(feature = "keyboard-nav")]
         keybindings::init(cx);
 
         // Bring app to front

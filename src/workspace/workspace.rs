@@ -3,11 +3,13 @@ use super::editor::Editor;
 use super::editor::EditorEvent;
 use super::footer_bar::{FooterBar, FooterBarEvent};
 use super::header_bar::HeaderBar;
+#[cfg(feature = "keyboard-nav")]
 use super::help_overlay::HelpOverlay;
 use super::storage::{StorageBrowser, StorageManager as StorageManagerPanel};
 use super::tables::{TableEvent, TablesTree};
 
-use crate::keybindings::{self, global, focus, editor as editor_actions};
+#[cfg(feature = "keyboard-nav")]
+use crate::keybindings::{editor as editor_actions, focus, global};
 use crate::services::AppStore;
 use crate::services::{ErrorResult, QueryExecutionResult, TableInfo};
 use crate::state::{ConnectionState, ConnectionStatus, StorageConnectionStatus, StorageState};
@@ -36,6 +38,7 @@ pub enum WorkspaceMode {
 }
 
 /// Currently focused panel in the workspace.
+#[cfg(feature = "keyboard-nav")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FocusedPanel {
     Editor,
@@ -77,8 +80,10 @@ pub struct Workspace {
     show_history: bool,
 
     /// Whether to show the help overlay.
+    #[cfg(feature = "keyboard-nav")]
     show_help: bool,
     /// Currently focused panel.
+    #[cfg(feature = "keyboard-nav")]
     focused_panel: Option<FocusedPanel>,
 }
 
@@ -169,7 +174,9 @@ impl Workspace {
             show_tables: true,
             show_agent: false,
             show_history: false,
+            #[cfg(feature = "keyboard-nav")]
             show_help: false,
+            #[cfg(feature = "keyboard-nav")]
             focused_panel: None,
         }
     }
@@ -178,16 +185,19 @@ impl Workspace {
     // Keyboard Action Handlers
     // ========================================================================
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_switch_to_database(&mut self, _: &global::SwitchToDatabase, _window: &mut Window, cx: &mut Context<Self>) {
         self.mode = WorkspaceMode::Database;
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_switch_to_storage(&mut self, _: &global::SwitchToStorage, _window: &mut Window, cx: &mut Context<Self>) {
         self.mode = WorkspaceMode::Storage;
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_toggle_sidebar(&mut self, _: &global::ToggleSidebar, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_tables = !self.show_tables;
         // Update footer bar state
@@ -197,6 +207,7 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_toggle_right_panel(&mut self, _: &global::ToggleRightPanel, _window: &mut Window, cx: &mut Context<Self>) {
         // Toggle between agent and history (or close if one is open)
         if self.show_agent {
@@ -210,6 +221,7 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_toggle_history(&mut self, _: &global::ToggleHistory, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_history = !self.show_history;
         if self.show_history {
@@ -222,6 +234,7 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_toggle_agent(&mut self, _: &global::ToggleAgent, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_agent = !self.show_agent;
         if self.show_agent {
@@ -234,16 +247,19 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_show_help(&mut self, _: &global::ShowHelp, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_help = true;
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_hide_help(&mut self, _: &global::HideHelp, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_help = false;
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_escape(&mut self, _: &global::Escape, _window: &mut Window, cx: &mut Context<Self>) {
         // Close help overlay if open
         if self.show_help {
@@ -256,17 +272,20 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_focus_tables(&mut self, _: &focus::FocusTables, _window: &mut Window, cx: &mut Context<Self>) {
         self.focused_panel = Some(FocusedPanel::Tables);
         self.show_tables = true;
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_focus_results(&mut self, _: &focus::FocusResults, _window: &mut Window, cx: &mut Context<Self>) {
         self.focused_panel = Some(FocusedPanel::Results);
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_focus_agent(&mut self, _: &focus::FocusAgent, _window: &mut Window, cx: &mut Context<Self>) {
         self.focused_panel = Some(FocusedPanel::Agent);
         self.show_agent = true;
@@ -274,6 +293,7 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_focus_history(&mut self, _: &focus::FocusHistory, _window: &mut Window, cx: &mut Context<Self>) {
         self.focused_panel = Some(FocusedPanel::History);
         self.show_history = true;
@@ -281,11 +301,13 @@ impl Workspace {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_focus_editor(&mut self, _: &editor_actions::FocusEditor, _window: &mut Window, cx: &mut Context<Self>) {
         self.focused_panel = Some(FocusedPanel::Editor);
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_execute_query(&mut self, _: &editor_actions::ExecuteQuery, _window: &mut Window, cx: &mut Context<Self>) {
         // Trigger query execution from editor
         self.editor.update(cx, |editor, cx| {
@@ -293,6 +315,7 @@ impl Workspace {
         });
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_format_query(&mut self, _: &editor_actions::FormatQuery, window: &mut Window, cx: &mut Context<Self>) {
         // Trigger format from editor
         self.editor.update(cx, |editor, cx| {
@@ -599,27 +622,40 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = self.render_content(cx);
 
+        #[cfg(feature = "keyboard-nav")]
+        let show_help = self.show_help;
+        #[cfg(not(feature = "keyboard-nav"))]
+        let show_help = false;
+
         div()
             .flex()
             .flex_col()
             .size_full()
-            // Register keyboard action handlers
-            .on_action(cx.listener(Self::on_switch_to_database))
-            .on_action(cx.listener(Self::on_switch_to_storage))
-            .on_action(cx.listener(Self::on_toggle_sidebar))
-            .on_action(cx.listener(Self::on_toggle_right_panel))
-            .on_action(cx.listener(Self::on_toggle_history))
-            .on_action(cx.listener(Self::on_toggle_agent))
-            .on_action(cx.listener(Self::on_show_help))
-            .on_action(cx.listener(Self::on_hide_help))
-            .on_action(cx.listener(Self::on_escape))
-            .on_action(cx.listener(Self::on_focus_tables))
-            .on_action(cx.listener(Self::on_focus_results))
-            .on_action(cx.listener(Self::on_focus_agent))
-            .on_action(cx.listener(Self::on_focus_history))
-            .on_action(cx.listener(Self::on_focus_editor))
-            .on_action(cx.listener(Self::on_execute_query))
-            .on_action(cx.listener(Self::on_format_query))
+            // Register keyboard action handlers (feature-gated)
+            .when_some(
+                #[cfg(feature = "keyboard-nav")]
+                Some(()),
+                #[cfg(not(feature = "keyboard-nav"))]
+                None::<()>,
+                |el, _| {
+                    el.on_action(cx.listener(Self::on_switch_to_database))
+                        .on_action(cx.listener(Self::on_switch_to_storage))
+                        .on_action(cx.listener(Self::on_toggle_sidebar))
+                        .on_action(cx.listener(Self::on_toggle_right_panel))
+                        .on_action(cx.listener(Self::on_toggle_history))
+                        .on_action(cx.listener(Self::on_toggle_agent))
+                        .on_action(cx.listener(Self::on_show_help))
+                        .on_action(cx.listener(Self::on_hide_help))
+                        .on_action(cx.listener(Self::on_escape))
+                        .on_action(cx.listener(Self::on_focus_tables))
+                        .on_action(cx.listener(Self::on_focus_results))
+                        .on_action(cx.listener(Self::on_focus_agent))
+                        .on_action(cx.listener(Self::on_focus_history))
+                        .on_action(cx.listener(Self::on_focus_editor))
+                        .on_action(cx.listener(Self::on_execute_query))
+                        .on_action(cx.listener(Self::on_format_query))
+                },
+            )
             .child(self.header_bar.clone())
             .child(self.render_mode_tabs(cx))
             .child(content)
@@ -628,8 +664,11 @@ impl Render for Workspace {
             .children(Root::render_sheet_layer(window, cx))
             .children(Root::render_notification_layer(window, cx))
             // Help overlay (rendered on top when visible)
-            .when(self.show_help, |el| {
-                el.child(HelpOverlay::new())
+            .when(show_help, |el| {
+                #[cfg(feature = "keyboard-nav")]
+                return el.child(HelpOverlay::new());
+                #[cfg(not(feature = "keyboard-nav"))]
+                return el;
             })
     }
 }

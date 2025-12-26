@@ -11,8 +11,9 @@ use gpui_component::{
     v_flex,
 };
 
+#[cfg(feature = "keyboard-nav")]
+use crate::keybindings::connection::{Connect, DeleteConnection, EditConnection, NewConnection};
 use crate::{
-    keybindings::connection::{Connect, DeleteConnection, EditConnection, NewConnection},
     services::database::storage::StorageConfig,
     state::{delete_storage_connection, storage_connect, StorageState},
     workspace::storage::{StorageConnectionForm, StorageConnectionListDelegate},
@@ -88,6 +89,7 @@ impl StorageManager {
     // Keyboard Action Handlers
     // ========================================================================
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_connect(&mut self, _: &Connect, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(conn) = self.selected_connection.clone() {
             self.is_creating = false;
@@ -102,6 +104,7 @@ impl StorageManager {
         }
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_new_connection(&mut self, _: &NewConnection, window: &mut Window, cx: &mut Context<Self>) {
         self.is_creating = true;
         self.is_editing = false;
@@ -113,6 +116,7 @@ impl StorageManager {
         cx.notify();
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_edit_connection(&mut self, _: &EditConnection, _window: &mut Window, cx: &mut Context<Self>) {
         if self.selected_connection.is_some() {
             self.is_editing = true;
@@ -120,6 +124,7 @@ impl StorageManager {
         }
     }
 
+    #[cfg(feature = "keyboard-nav")]
     fn on_delete_connection(&mut self, _: &DeleteConnection, window: &mut Window, cx: &mut Context<Self>) {
         if self.selected_connection.is_some() {
             let connection_form_clone = self.connection_form.clone();
@@ -211,11 +216,19 @@ impl Render for StorageManager {
             .border_color(cx.theme().border)
             .border_r_1()
             .min_w(px(300.0))
-            // Register keyboard action handlers
-            .on_action(cx.listener(Self::on_connect))
-            .on_action(cx.listener(Self::on_new_connection))
-            .on_action(cx.listener(Self::on_edit_connection))
-            .on_action(cx.listener(Self::on_delete_connection))
+            // Register keyboard action handlers (feature-gated)
+            .when_some(
+                #[cfg(feature = "keyboard-nav")]
+                Some(()),
+                #[cfg(not(feature = "keyboard-nav"))]
+                None::<()>,
+                |el, _| {
+                    el.on_action(cx.listener(Self::on_connect))
+                        .on_action(cx.listener(Self::on_new_connection))
+                        .on_action(cx.listener(Self::on_edit_connection))
+                        .on_action(cx.listener(Self::on_delete_connection))
+                },
+            )
             .child(self.render_connections_list(cx));
 
         let show_welcome = self.selected_connection.clone().is_none()

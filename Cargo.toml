@@ -12,6 +12,10 @@ path = "src/bin/build_app.rs"
 name = "release"
 path = "src/bin/release.rs"
 
+[features]
+default = ["keyboard-nav"]
+keyboard-nav = []
+
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
