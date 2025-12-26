@@ -13,8 +13,9 @@ name = "release"
 path = "src/bin/release.rs"
 
 [features]
-default = ["keyboard-nav"]
+default = ["keyboard-nav", "keyring"]
 keyboard-nav = []
+keyring = ["dep:keyring"]
 
 [dependencies]
 anyhow = "1.0"
@@ -29,7 +30,7 @@ futures = "0.3"
 gpui = "0.2"
 gpui-component = { version = "0.5", features = ["tree-sitter-languages"] }
 hex = "0.4"
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"], optional = true }
 lsp-types = "0.97.0"
 rust-embed = "8.2.0"
 rust_decimal = "1.37.1"

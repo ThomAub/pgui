@@ -1,6 +1,7 @@
 //! Storage connection repository using SQLite and system keyring.
 
 use anyhow::{Context, Result};
+#[cfg(feature = "keyring")]
 use keyring::Entry;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use uuid::Uuid;
 
 use crate::services::database::storage::{StorageConfig, StorageParams, StorageType};
 
+#[cfg(feature = "keyring")]
 const KEYRING_SERVICE: &str = "pgui-storage";
 
 /// Repository for storage connection CRUD operations.
@@ -25,13 +27,15 @@ impl StorageConnectionsRepository {
         Self { pool }
     }
 
-    // ========== Keyring Methods ==========
+    // ========== Keyring Methods (feature-gated) ==========
 
+    #[cfg(feature = "keyring")]
     fn get_keyring_entry(connection_id: &Uuid) -> Result<Entry> {
         Entry::new(KEYRING_SERVICE, &connection_id.to_string())
             .context("Failed to create keyring entry")
     }
 
+    #[cfg(feature = "keyring")]
     fn store_secret(connection_id: &Uuid, secret: &str) -> Result<()> {
         let entry = Self::get_keyring_entry(connection_id)?;
         entry
@@ -39,6 +43,13 @@ impl StorageConnectionsRepository {
             .context("Failed to store secret in keyring")
     }
 
+    #[cfg(not(feature = "keyring"))]
+    fn store_secret(_connection_id: &Uuid, _secret: &str) -> Result<()> {
+        tracing::warn!("Keyring feature disabled - secret will not be stored securely");
+        Ok(())
+    }
+
+    #[cfg(feature = "keyring")]
     fn get_secret(connection_id: &Uuid) -> Result<String> {
         let entry = Self::get_keyring_entry(connection_id)?;
         entry
@@ -46,9 +57,21 @@ impl StorageConnectionsRepository {
             .context("Failed to retrieve secret from keyring")
     }
 
+    #[cfg(not(feature = "keyring"))]
+    fn get_secret(_connection_id: &Uuid) -> Result<String> {
+        tracing::warn!("Keyring feature disabled - cannot retrieve stored secret");
+        Ok(String::new())
+    }
+
+    #[cfg(feature = "keyring")]
     fn delete_secret(connection_id: &Uuid) -> Result<()> {
         let entry = Self::get_keyring_entry(connection_id)?;
         let _ = entry.delete_credential();
+        Ok(())
+    }
+
+    #[cfg(not(feature = "keyring"))]
+    fn delete_secret(_connection_id: &Uuid) -> Result<()> {
         Ok(())
     }
 
