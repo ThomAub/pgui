@@ -1,3 +1,7 @@
+//! Storage connection manager panel.
+//!
+//! Main UI for managing storage connections when not connected.
+
 use gpui::{prelude::FluentBuilder as _, *};
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, WindowExt as _,
@@ -10,31 +14,32 @@ use gpui_component::{
 #[cfg(feature = "keyboard-nav")]
 use crate::keybindings::connection::{Connect, DeleteConnection, EditConnection, NewConnection};
 use crate::{
-    services::ConnectionInfo,
-    state::{ConnectionState, connect, delete_connection},
-    workspace::connections::{ConnectionForm, ConnectionListDelegate},
+    services::database::storage::StorageConfig,
+    state::{delete_storage_connection, storage_connect, StorageState},
+    workspace::storage::{StorageConnectionForm, StorageConnectionListDelegate},
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub struct ConnectionManager {
+/// Main manager panel for storage connections.
+pub struct StorageManager {
     is_creating: bool,
     is_editing: bool,
-    selected_connection: Option<ConnectionInfo>,
-    connection_form: Entity<ConnectionForm>,
-    connection_list: Entity<ListState<ConnectionListDelegate>>,
+    selected_connection: Option<StorageConfig>,
+    connection_form: Entity<StorageConnectionForm>,
+    connection_list: Entity<ListState<StorageConnectionListDelegate>>,
     _subscriptions: Vec<Subscription>,
 }
 
-impl ConnectionManager {
+impl StorageManager {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let connection_list =
-            cx.new(|cx| ListState::new(ConnectionListDelegate::new(), window, cx));
+            cx.new(|cx| ListState::new(StorageConnectionListDelegate::new(), window, cx));
 
         let conn_list_clone = connection_list.clone();
         let _subscriptions = vec![
-            cx.observe_global::<ConnectionState>(move |_this, cx| {
-                let conns = cx.global::<ConnectionState>().saved_connections.clone();
+            cx.observe_global::<StorageState>(move |_this, cx| {
+                let conns = cx.global::<StorageState>().saved_connections.clone();
                 let _ = cx.update_entity(&conn_list_clone, |list, cx| {
                     list.delegate_mut().update_connections(conns);
                     cx.notify();
@@ -46,38 +51,25 @@ impl ConnectionManager {
                 &connection_list.clone(),
                 window,
                 |this, list, evt, win, cx| {
-                    match evt.clone() {
-                        ListEvent::Confirm(ix) => {
-                            let list_del = list.read(cx).delegate();
-                            if let Some(conn) = list_del.matched_connections.clone().get(ix.row) {
-                                this.selected_connection = Some(conn.clone());
-                                this.is_creating = false;
-                                this.is_editing = false;
+                    if let ListEvent::Confirm(ix) = evt.clone() {
+                        let list_del = list.read(cx).delegate();
+                        if let Some(conn) = list_del.matched_connections.clone().get(ix.row) {
+                            this.selected_connection = Some(conn.clone());
+                            this.is_creating = false;
+                            this.is_editing = false;
+                            cx.notify();
+
+                            let _ = cx.update_entity(&this.connection_form.clone(), |form, cx| {
+                                form.set_connection(conn.clone(), win, cx);
                                 cx.notify();
-
-                                let _ =
-                                    cx.update_entity(&this.connection_form.clone(), |form, cx| {
-                                        form.set_connection(conn.clone(), win, cx);
-                                        cx.notify();
-                                    });
-                            }
+                            });
                         }
-                        _ => {
-                            tracing::debug!("not confirm")
-                        }
-                    };
-
-                    // if let Some(c) = connection {
-                    //     let _ = cx.update_entity(&this.connection_form.clone(), |form, cx| {
-                    //         form.set_connection(c, win, cx);
-                    //         cx.notify();
-                    //     });
-                    // }
+                    }
                 },
             ),
         ];
 
-        let connection_form = ConnectionForm::view(None, window, cx);
+        let connection_form = StorageConnectionForm::view(None, window, cx);
 
         Self {
             is_creating: false,
@@ -106,7 +98,7 @@ impl ConnectionManager {
                 form.clear(window, cx);
                 cx.notify();
             });
-            connect(&conn, cx);
+            storage_connect(&conn, cx);
             self.selected_connection = None;
             cx.notify();
         }
@@ -146,7 +138,7 @@ impl ConnectionManager {
 
                 dialog
                     .confirm()
-                    .child("Are you sure you want to delete this connection?")
+                    .child("Are you sure you want to delete this storage connection?")
                     .on_ok(move |_, window, cx| {
                         cx.update_entity(&form_clone, |form, cx| {
                             form.clear(window, cx);
@@ -154,7 +146,7 @@ impl ConnectionManager {
                         });
 
                         if let Some(conn) = conn_clone.clone() {
-                            delete_connection(conn, cx);
+                            delete_storage_connection(conn, cx);
                         }
 
                         cx.update_entity(&manager_clone.clone(), |manager, cx| {
@@ -177,11 +169,11 @@ impl ConnectionManager {
             .w_full()
             .justify_between()
             .items_center()
-            .child(Label::new("Connections").font_bold().text_base())
+            .child(Label::new("Storage Connections").font_bold().text_base())
             .child(
                 Button::new("new")
                     .icon(Icon::empty().path("icons/plus.svg"))
-                    .tooltip("New Connection")
+                    .tooltip("New Storage Connection")
                     .ghost()
                     .small()
                     .on_click(cx.listener(|this, _evt, win, cx| {
@@ -195,6 +187,7 @@ impl ConnectionManager {
                         cx.notify();
                     })),
             );
+
         v_flex()
             .gap_2()
             .p_2()
@@ -213,10 +206,10 @@ impl ConnectionManager {
     }
 }
 
-impl Render for ConnectionManager {
+impl Render for StorageManager {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sidebar = div()
-            .id("connection-manager-sidebar")
+            .id("storage-manager-sidebar")
             .flex()
             .flex_1()
             .bg(cx.theme().sidebar)
@@ -235,18 +228,18 @@ impl Render for ConnectionManager {
 
         let sidebar = sidebar;
 
-        let show_wecome = self.selected_connection.clone().is_none()
-            && !self.is_creating.clone()
-            && !self.is_editing.clone();
+        let show_welcome = self.selected_connection.clone().is_none()
+            && !self.is_creating
+            && !self.is_editing;
 
         let show_connection_info = self.selected_connection.clone().is_some()
-            && !self.is_creating.clone()
-            && !self.is_editing.clone();
+            && !self.is_creating
+            && !self.is_editing;
 
-        let show_form = self.is_editing.clone() || self.is_creating.clone();
+        let show_form = self.is_editing || self.is_creating;
 
         let main = div()
-            .id("connection-manager-main")
+            .id("storage-manager-main")
             .flex()
             .bg(cx.theme().tiles)
             .flex_col()
@@ -254,25 +247,49 @@ impl Render for ConnectionManager {
             .p_4()
             .when(show_connection_info, |d| {
                 let conn = self.selected_connection.clone().unwrap();
+                let conn_name = conn.name.clone();
+                let storage_type = conn.storage_type.display_name();
+                let description = match &conn.params {
+                    crate::services::database::storage::StorageParams::S3 {
+                        bucket, region, ..
+                    } => format!("s3://{} ({})", bucket, region),
+                    crate::services::database::storage::StorageParams::LocalFs { root_path } => {
+                        root_path.display().to_string()
+                    }
+                    crate::services::database::storage::StorageParams::Gcs { bucket, .. } => {
+                        format!("gs://{}", bucket)
+                    }
+                    crate::services::database::storage::StorageParams::AzureBlob {
+                        container,
+                        ..
+                    } => format!("azure://{}", container),
+                };
+
                 d.flex().justify_center().items_center().child(
                     div()
                         .flex()
                         .flex_col()
                         .gap_1()
                         .items_center()
-                        .child(div().text_xl().child(conn.name.clone()))
-                        .child(div().text_lg().child(format!(
-                            "{}@{}:{}/{}",
-                            conn.username.clone(),
-                            conn.hostname.clone(),
-                            conn.port.clone(),
-                            conn.database.clone()
-                        )))
+                        .child(
+                            Icon::empty().path("icons/cloud-download.svg")
+                                .size_12()
+                                .text_color(cx.theme().muted_foreground),
+                        )
+                        .child(div().text_xl().child(conn_name))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(storage_type),
+                        )
+                        .child(div().text_lg().child(description))
                         .child(
                             div()
                                 .flex()
                                 .justify_center()
                                 .gap_1()
+                                .mt_4()
                                 .child(
                                     Button::new("delete")
                                         .label("Delete")
@@ -295,23 +312,22 @@ impl Render for ConnectionManager {
 
                                                 dialog
                                                     .confirm()
-                                                    .child("Are you sure you want to delete this connection?")
+                                                    .child("Are you sure you want to delete this storage connection?")
                                                     .on_ok(move |_, window, cx| {
-                                                        cx.update_entity(&form_clone, |form, cx|{
-                                                          form.clear(window, cx);
-                                                          cx.notify();
+                                                        cx.update_entity(&form_clone, |form, cx| {
+                                                            form.clear(window, cx);
+                                                            cx.notify();
                                                         });
 
                                                         if let Some(conn) = conn_clone.clone() {
-                                                          delete_connection(conn, cx);
+                                                            delete_storage_connection(conn, cx);
                                                         }
 
-                                                        cx.update_entity(&manager_clone.clone(), |manager, cx|{
-                                                          manager.selected_connection = None;
-                                                          cx.notify();
+                                                        cx.update_entity(&manager_clone.clone(), |manager, cx| {
+                                                            manager.selected_connection = None;
+                                                            cx.notify();
                                                         });
 
-                                                        // Notify delete
                                                         window.push_notification("Deleted", cx);
                                                         true
                                                     })
@@ -347,7 +363,7 @@ impl Render for ConnectionManager {
                                             });
 
                                             if let Some(conn) = this.selected_connection.clone() {
-                                                connect(&conn, cx);
+                                                storage_connect(&conn, cx);
                                             }
 
                                             this.selected_connection = None;
@@ -358,7 +374,7 @@ impl Render for ConnectionManager {
                 )
             })
             .when(show_form, |d| d.child(self.connection_form.clone()))
-            .when(show_wecome, |d| {
+            .when(show_welcome, |d| {
                 let version = div()
                     .flex()
                     .flex_col()
@@ -373,9 +389,31 @@ impl Render for ConnectionManager {
                 d.flex()
                     .items_center()
                     .justify_center()
-                    .child(div().text_lg().child("PGUI"))
-                    .child("Create or select a connection")
-                    .child(version)
+                    .child(
+                        v_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::empty().path("icons/cloud-download.svg")
+                                    .size_12()
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(div().text_lg().child("Storage Browser"))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Browse S3, GCS, Azure, and local files"),
+                            )
+                            .child(
+                                div()
+                                    .mt_2()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Create or select a storage connection"),
+                            )
+                            .child(version),
+                    )
             });
 
         div().flex().flex_1().child(sidebar).child(main)

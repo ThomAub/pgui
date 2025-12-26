@@ -9,20 +9,31 @@
 //! - `database` - Available databases on the connected server
 //! - `editor` - Editor-related state (tables for autocomplete, etc.)
 //! - `actions` - Cross-cutting operations (connect, disconnect, etc.)
+//! - `storage` - Storage connection state (S3, GCS, Azure, etc.)
+//! - `storage_actions` - Storage-related operations
 
 mod actions;
 mod connection;
 mod database;
 mod editor;
+mod storage;
+mod storage_actions;
 
 // Re-export state structs
 pub use connection::{ConnectionState, ConnectionStatus};
 pub use database::DatabaseState;
 pub use editor::{EditorCodeActions, EditorInlineCompletions, EditorState};
+pub use storage::{StorageConnectionStatus, StorageState};
 
 // Re-export actions for orchestration
 pub use actions::{
     add_connection, change_database, connect, delete_connection, disconnect, update_connection,
+};
+
+// Re-export storage actions
+pub use storage_actions::{
+    add_storage_connection, delete_storage_connection, storage_connect, storage_disconnect,
+    test_storage_connection, update_storage_connection,
 };
 
 use gpui::App;
@@ -34,4 +45,5 @@ pub fn init(cx: &mut App) {
     EditorState::init(cx);
     EditorCodeActions::init(cx);
     EditorInlineCompletions::init(cx);
+    StorageState::init(cx);
 }

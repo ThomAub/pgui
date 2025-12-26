@@ -1,12 +1,16 @@
 //! Connection repository using SQLite and system keyring.
 
 use anyhow::{Context, Result};
+#[cfg(feature = "keyring")]
 use keyring::Entry;
 use sqlx::SqlitePool;
+use std::path::PathBuf;
 use uuid::Uuid;
 
+use crate::services::database::traits::DatabaseType;
 use super::types::{ConnectionInfo, SslMode};
 
+#[cfg(feature = "keyring")]
 const KEYRING_SERVICE: &str = "pgui";
 
 /// Repository for connection CRUD operations.
@@ -23,13 +27,15 @@ impl ConnectionsRepository {
         Self { pool }
     }
 
-    // ========== Keyring Methods ==========
+    // ========== Keyring Methods (feature-gated) ==========
 
+    #[cfg(feature = "keyring")]
     fn get_keyring_entry(connection_id: &Uuid) -> Result<Entry> {
         Entry::new(KEYRING_SERVICE, &connection_id.to_string())
             .context("Failed to create keyring entry")
     }
 
+    #[cfg(feature = "keyring")]
     fn store_password(connection_id: &Uuid, password: &str) -> Result<()> {
         let entry = Self::get_keyring_entry(connection_id)?;
         entry
@@ -37,6 +43,13 @@ impl ConnectionsRepository {
             .context("Failed to store password in keyring")
     }
 
+    #[cfg(not(feature = "keyring"))]
+    fn store_password(_connection_id: &Uuid, _password: &str) -> Result<()> {
+        tracing::warn!("Keyring feature disabled - password will not be stored securely");
+        Ok(())
+    }
+
+    #[cfg(feature = "keyring")]
     fn get_password(connection_id: &Uuid) -> Result<String> {
         let entry = Self::get_keyring_entry(connection_id)?;
         entry
@@ -44,9 +57,21 @@ impl ConnectionsRepository {
             .context("Failed to retrieve password from keyring")
     }
 
+    #[cfg(not(feature = "keyring"))]
+    fn get_password(_connection_id: &Uuid) -> Result<String> {
+        tracing::warn!("Keyring feature disabled - cannot retrieve stored password");
+        Ok(String::new())
+    }
+
+    #[cfg(feature = "keyring")]
     fn delete_password(connection_id: &Uuid) -> Result<()> {
         let entry = Self::get_keyring_entry(connection_id)?;
         let _ = entry.delete_credential();
+        Ok(())
+    }
+
+    #[cfg(not(feature = "keyring"))]
+    fn delete_password(_connection_id: &Uuid) -> Result<()> {
         Ok(())
     }
 
@@ -54,8 +79,9 @@ impl ConnectionsRepository {
 
     /// Load all saved connections from the database
     pub async fn load_all(&self) -> Result<Vec<ConnectionInfo>> {
-        let rows = sqlx::query_as::<_, (String, String, String, String, String, i64, String)>(
-            "SELECT id, name, hostname, username, database, port, ssl_mode
+        // Query includes all fields including new multi-database fields
+        let rows = sqlx::query_as::<_, (String, String, String, String, String, String, i64, String, Option<String>, i64)>(
+            "SELECT id, name, database_type, hostname, username, database, port, ssl_mode, file_path, read_only
              FROM connections
              ORDER BY name",
         )
@@ -63,19 +89,25 @@ impl ConnectionsRepository {
         .await?;
 
         let mut connections = Vec::new();
-        for (id_str, name, hostname, username, database, port, ssl_mode_str) in rows {
+        for (id_str, name, db_type_str, hostname, username, database, port, ssl_mode_str, file_path, read_only) in rows {
             let id = Uuid::parse_str(&id_str).context("Invalid UUID in database")?;
             let password = String::new(); // Load on-demand to avoid keychain prompts
+
+            let database_type = DatabaseType::from_str(&db_type_str)
+                .unwrap_or(DatabaseType::PostgreSQL);
 
             connections.push(ConnectionInfo {
                 id,
                 name,
+                database_type,
                 hostname,
                 username,
                 password,
                 database,
                 port: port as usize,
                 ssl_mode: SslMode::from_db_str(&ssl_mode_str),
+                file_path: file_path.map(PathBuf::from),
+                read_only: read_only != 0,
             });
         }
 
@@ -95,19 +127,24 @@ impl ConnectionsRepository {
             Self::store_password(&connection.id, &connection.password)?;
         }
 
+        let file_path_str = connection.file_path.as_ref().map(|p| p.display().to_string());
+
         sqlx::query(
             r#"
-            INSERT INTO connections (id, name, hostname, username, database, port, ssl_mode, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CURRENT_TIMESTAMP)
+            INSERT INTO connections (id, name, database_type, hostname, username, database, port, ssl_mode, file_path, read_only, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, CURRENT_TIMESTAMP)
             "#,
         )
         .bind(connection.id.to_string())
         .bind(&connection.name)
+        .bind(connection.database_type.to_db_str())
         .bind(&connection.hostname)
         .bind(&connection.username)
         .bind(&connection.database)
         .bind(connection.port as i64)
         .bind(connection.ssl_mode.to_db_str())
+        .bind(&file_path_str)
+        .bind(if connection.read_only { 1i64 } else { 0i64 })
         .execute(&self.pool)
         .await?;
 
@@ -135,21 +172,26 @@ impl ConnectionsRepository {
             Self::store_password(&connection.id, &connection.password)?;
         }
 
+        let file_path_str = connection.file_path.as_ref().map(|p| p.display().to_string());
+
         sqlx::query(
             r#"
             UPDATE connections
-            SET name = ?2, hostname = ?3, username = ?4, database = ?5,
-                port = ?6, ssl_mode = ?7, updated_at = CURRENT_TIMESTAMP
+            SET name = ?2, database_type = ?3, hostname = ?4, username = ?5, database = ?6,
+                port = ?7, ssl_mode = ?8, file_path = ?9, read_only = ?10, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?1
             "#,
         )
         .bind(connection.id.to_string())
         .bind(&connection.name)
+        .bind(connection.database_type.to_db_str())
         .bind(&connection.hostname)
         .bind(&connection.username)
         .bind(&connection.database)
         .bind(connection.port as i64)
         .bind(connection.ssl_mode.to_db_str())
+        .bind(&file_path_str)
+        .bind(if connection.read_only { 1i64 } else { 0i64 })
         .execute(&self.pool)
         .await?;
 
@@ -169,8 +211,8 @@ impl ConnectionsRepository {
     /// Get a single connection by ID
     #[allow(dead_code)]
     pub async fn get(&self, id: &Uuid) -> Result<Option<ConnectionInfo>> {
-        let result = sqlx::query_as::<_, (String, String, String, String, String, i64, String)>(
-            "SELECT id, name, hostname, username, database, port, ssl_mode
+        let result = sqlx::query_as::<_, (String, String, String, String, String, String, i64, String, Option<String>, i64)>(
+            "SELECT id, name, database_type, hostname, username, database, port, ssl_mode, file_path, read_only
              FROM connections WHERE id = ?1",
         )
         .bind(id.to_string())
@@ -178,15 +220,23 @@ impl ConnectionsRepository {
         .await?;
 
         Ok(result.map(
-            |(id_str, name, hostname, username, database, port, ssl_mode_str)| ConnectionInfo {
-                id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
-                name,
-                hostname,
-                username,
-                password: String::new(),
-                database,
-                port: port as usize,
-                ssl_mode: SslMode::from_db_str(&ssl_mode_str),
+            |(id_str, name, db_type_str, hostname, username, database, port, ssl_mode_str, file_path, read_only)| {
+                let database_type = DatabaseType::from_str(&db_type_str)
+                    .unwrap_or(DatabaseType::PostgreSQL);
+
+                ConnectionInfo {
+                    id: Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4()),
+                    name,
+                    database_type,
+                    hostname,
+                    username,
+                    password: String::new(),
+                    database,
+                    port: port as usize,
+                    ssl_mode: SslMode::from_db_str(&ssl_mode_str),
+                    file_path: file_path.map(PathBuf::from),
+                    read_only: read_only != 0,
+                }
             },
         ))
     }
