@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 
+use super::duckdb::DuckDbConnection;
 use super::mysql::MySqlConnection;
 use super::postgres::PostgresConnection;
 use super::sqlite::SqliteConnection;
@@ -61,13 +62,7 @@ impl ConnectionFactory {
                      Please check back after Epic 6 is complete."
                 ))
             }
-            DatabaseType::DuckDB => {
-                // Will be implemented in Epic 5
-                Err(anyhow!(
-                    "DuckDB support coming soon. \
-                     Please check back after Epic 5 is complete."
-                ))
-            }
+            DatabaseType::DuckDB => Ok(DuckDbConnection::boxed(config)),
         }
     }
 
@@ -97,9 +92,7 @@ impl ConnectionFactory {
             DatabaseType::ClickHouse => {
                 Err(anyhow!("ClickHouse support coming soon."))
             }
-            DatabaseType::DuckDB => {
-                Err(anyhow!("DuckDB support coming soon."))
-            }
+            DatabaseType::DuckDB => Ok(Box::new(DuckDbConnection::new(config))),
         }
     }
 
@@ -117,8 +110,8 @@ impl ConnectionFactory {
             DatabaseType::PostgreSQL => true,  // Epic 2 - Implemented
             DatabaseType::SQLite => true,      // Epic 3 - Implemented
             DatabaseType::MySQL => true,       // Epic 4 - Implemented
+            DatabaseType::DuckDB => true,      // Epic 5 - Implemented
             DatabaseType::ClickHouse => false, // Epic 6
-            DatabaseType::DuckDB => false,     // Epic 5
         }
     }
 
@@ -230,21 +223,22 @@ mod tests {
 
     #[test]
     fn test_is_supported() {
-        // PostgreSQL, SQLite, and MySQL are implemented
+        // PostgreSQL, SQLite, MySQL, and DuckDB are implemented
         assert!(ConnectionFactory::is_supported(DatabaseType::PostgreSQL));
         assert!(ConnectionFactory::is_supported(DatabaseType::SQLite));
         assert!(ConnectionFactory::is_supported(DatabaseType::MySQL));
+        assert!(ConnectionFactory::is_supported(DatabaseType::DuckDB));
         assert!(!ConnectionFactory::is_supported(DatabaseType::ClickHouse));
-        assert!(!ConnectionFactory::is_supported(DatabaseType::DuckDB));
     }
 
     #[test]
     fn test_supported_types() {
         let supported = ConnectionFactory::supported_types();
-        assert_eq!(supported.len(), 3);
+        assert_eq!(supported.len(), 4);
         assert!(supported.contains(&DatabaseType::PostgreSQL));
         assert!(supported.contains(&DatabaseType::SQLite));
         assert!(supported.contains(&DatabaseType::MySQL));
+        assert!(supported.contains(&DatabaseType::DuckDB));
     }
 
     #[test]
@@ -266,6 +260,11 @@ mod tests {
         let mysql = all.iter().find(|(t, _)| *t == DatabaseType::MySQL);
         assert!(mysql.is_some());
         assert!(mysql.unwrap().1);
+
+        // Check DuckDB is supported
+        let duckdb = all.iter().find(|(t, _)| *t == DatabaseType::DuckDB);
+        assert!(duckdb.is_some());
+        assert!(duckdb.unwrap().1);
     }
 
     #[test]
@@ -294,6 +293,51 @@ mod tests {
             "test".to_string(),
             DatabaseType::MySQL,
             ConnectionParams::file(PathBuf::from("/tmp/test.db"), false),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_factory_creates_duckdb_file() {
+        // Valid: DuckDB with file params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::DuckDB,
+            ConnectionParams::file(PathBuf::from("/tmp/test.duckdb"), false),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_factory_creates_duckdb_memory() {
+        // Valid: DuckDB with in-memory params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::DuckDB,
+            ConnectionParams::in_memory(),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_factory_rejects_duckdb_server() {
+        // Invalid: DuckDB with server params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::DuckDB,
+            ConnectionParams::server(
+                "localhost".to_string(),
+                5432,
+                "user".to_string(),
+                "pass".to_string(),
+                "db".to_string(),
+            ),
         );
 
         let result = ConnectionFactory::create(config);

@@ -13,17 +13,18 @@
 mod factory;
 
 // Driver implementations
+pub mod duckdb;
 pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 
 // Driver modules to be added as they are implemented:
-// pub mod duckdb;     // Epic 5
 // pub mod clickhouse; // Epic 6
 
 pub use factory::ConnectionFactory;
 
 // Re-export main driver types
+pub use duckdb::DuckDbConnection;
 pub use mysql::MySqlConnection;
 pub use postgres::PostgresConnection;
 pub use sqlite::SqliteConnection;
