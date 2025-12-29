@@ -1,42 +1,42 @@
-//! PostgreSQL connection implementation.
+//! MySQL connection implementation.
 //!
-//! This module implements the `DatabaseConnection` trait for PostgreSQL
-//! using SQLx's PgPool.
+//! This module implements the `DatabaseConnection` trait for MySQL
+//! using SQLx's MySqlPool.
 
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use futures::StreamExt;
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
-use sqlx::PgPool;
+use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlSslMode};
+use sqlx::MySqlPool;
 use std::time::Duration;
 
-use super::types::PgValueConverter;
+use super::types::MySqlValueConverter;
 use crate::services::database::traits::{
-    BoxedConnection, ColumnInfo, ConnectionConfig, ConnectionParams, DatabaseConnection,
-    DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult, SslMode,
+    BoxedConnection, ConnectionConfig, ConnectionParams, DatabaseConnection,
+    DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult,
 };
 
-/// PostgreSQL database connection.
+/// MySQL database connection.
 ///
-/// This struct wraps a SQLx PgPool and implements the `DatabaseConnection` trait.
-pub struct PostgresConnection {
+/// This struct wraps a SQLx MySqlPool and implements the `DatabaseConnection` trait.
+pub struct MySqlConnection {
     config: ConnectionConfig,
-    pool: RwLock<Option<PgPool>>,
+    pool: RwLock<Option<MySqlPool>>,
 }
 
-impl std::fmt::Debug for PostgresConnection {
+impl std::fmt::Debug for MySqlConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PostgresConnection")
+        f.debug_struct("MySqlConnection")
             .field("config", &self.config)
-            .field("pool", &"<PgPool>")
+            .field("pool", &"<MySqlPool>")
             .finish()
     }
 }
 
-impl PostgresConnection {
-    /// Create a new PostgreSQL connection from configuration.
+impl MySqlConnection {
+    /// Create a new MySQL connection from configuration.
     ///
     /// This does not connect immediately - call `connect()` to establish the connection.
     pub fn new(config: ConnectionConfig) -> Self {
@@ -51,8 +51,8 @@ impl PostgresConnection {
         Box::new(Self::new(config))
     }
 
-    /// Build PgConnectOptions from the configuration.
-    fn build_connect_options(&self) -> Result<PgConnectOptions> {
+    /// Build MySqlConnectOptions from the configuration.
+    fn build_connect_options(&self) -> Result<MySqlConnectOptions> {
         match &self.config.params {
             ConnectionParams::Server {
                 hostname,
@@ -63,18 +63,24 @@ impl PostgresConnection {
                 ssl_mode,
                 ..
             } => {
-                let pg_ssl_mode = PgValueConverter::map_ssl_mode(ssl_mode);
+                let (require_ssl, _verify) = MySqlValueConverter::map_ssl_mode(ssl_mode);
 
-                Ok(PgConnectOptions::new()
+                let mysql_ssl_mode = if require_ssl {
+                    MySqlSslMode::Required
+                } else {
+                    MySqlSslMode::Preferred
+                };
+
+                Ok(MySqlConnectOptions::new()
                     .host(hostname)
                     .port(*port)
                     .username(username)
                     .password(password)
                     .database(database)
-                    .ssl_mode(pg_ssl_mode))
+                    .ssl_mode(mysql_ssl_mode))
             }
             ConnectionParams::File { .. } | ConnectionParams::InMemory { .. } => Err(anyhow!(
-                "PostgreSQL does not support file-based or in-memory connections"
+                "MySQL does not support file-based or in-memory connections"
             )),
         }
     }
@@ -82,7 +88,7 @@ impl PostgresConnection {
     /// Get a reference to the connection pool.
     ///
     /// Returns an error if not connected.
-    async fn get_pool(&self) -> Result<PgPool> {
+    async fn get_pool(&self) -> Result<MySqlPool> {
         let guard = self.pool.read().await;
         guard
             .as_ref()
@@ -91,7 +97,7 @@ impl PostgresConnection {
     }
 
     /// Get a reference to the pool (internal helper for schema module).
-    pub(crate) async fn get_pool_internal(&self) -> Result<PgPool> {
+    pub(crate) async fn get_pool_internal(&self) -> Result<MySqlPool> {
         self.get_pool().await
     }
 
@@ -99,26 +105,36 @@ impl PostgresConnection {
     fn is_select_query(sql: &str) -> bool {
         let lower = sql.to_lowercase();
         let trimmed = lower.trim_start();
-        trimmed.starts_with("select") || trimmed.starts_with("with")
+        trimmed.starts_with("select")
+            || trimmed.starts_with("with")
+            || trimmed.starts_with("show")
+            || trimmed.starts_with("describe")
+            || trimmed.starts_with("desc")
+            || trimmed.starts_with("explain")
     }
 
     /// Execute a SELECT query.
-    async fn execute_select(&self, sql: &str, pool: &PgPool) -> QueryExecutionResult {
+    async fn execute_select(&self, sql: &str, pool: &MySqlPool) -> QueryExecutionResult {
         let start_time = std::time::Instant::now();
         let original_query = sql.to_string();
 
         // Add LIMIT if not present to prevent massive result sets
-        let limited_sql = if !sql.to_lowercase().contains(" limit ") {
+        let limited_sql = if !sql.to_lowercase().contains(" limit ")
+            && !sql.to_lowercase().starts_with("show")
+            && !sql.to_lowercase().starts_with("describe")
+            && !sql.to_lowercase().starts_with("desc")
+            && !sql.to_lowercase().starts_with("explain")
+        {
             format!("{} LIMIT {}", sql.trim_end_matches(';'), 1_000)
         } else {
             sql.to_string()
         };
 
         match sqlx::query(&limited_sql).fetch_all(pool).await {
-            Ok(pg_rows) => {
+            Ok(mysql_rows) => {
                 let execution_time_ms = start_time.elapsed().as_millis();
 
-                if pg_rows.is_empty() {
+                if mysql_rows.is_empty() {
                     return QueryExecutionResult::Select(SelectResult::new(
                         vec![],
                         vec![],
@@ -128,10 +144,10 @@ impl PostgresConnection {
                 }
 
                 // Convert to trait types
-                let columns = PgValueConverter::build_column_info(&pg_rows[0]);
-                let rows: Vec<Row> = pg_rows
+                let columns = MySqlValueConverter::build_column_info(&mysql_rows[0]);
+                let rows: Vec<Row> = mysql_rows
                     .iter()
-                    .map(PgValueConverter::convert_row)
+                    .map(MySqlValueConverter::convert_row)
                     .collect();
 
                 QueryExecutionResult::Select(SelectResult::new(
@@ -152,7 +168,7 @@ impl PostgresConnection {
     }
 
     /// Execute a modification query (INSERT, UPDATE, DELETE).
-    async fn execute_modification(&self, sql: &str, pool: &PgPool) -> QueryExecutionResult {
+    async fn execute_modification(&self, sql: &str, pool: &MySqlPool) -> QueryExecutionResult {
         let start_time = std::time::Instant::now();
 
         match sqlx::query(sql).execute(pool).await {
@@ -175,9 +191,9 @@ impl PostgresConnection {
 }
 
 #[async_trait]
-impl DatabaseConnection for PostgresConnection {
+impl DatabaseConnection for MySqlConnection {
     fn database_type(&self) -> DatabaseType {
-        DatabaseType::PostgreSQL
+        DatabaseType::MySQL
     }
 
     fn connection_config(&self) -> &ConnectionConfig {
@@ -187,7 +203,7 @@ impl DatabaseConnection for PostgresConnection {
     async fn connect(&mut self) -> Result<()> {
         let options = self.build_connect_options()?;
 
-        let pool = PgPoolOptions::new()
+        let pool = MySqlPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(Duration::from_secs(5))
             .connect_with(options)
@@ -242,7 +258,7 @@ impl DatabaseConnection for PostgresConnection {
 
         let stream = sqlx::query(sql)
             .fetch(&pool)
-            .map(|result| result.map(|pg_row| PgValueConverter::convert_row(&pg_row)).map_err(|e| anyhow!(e)));
+            .map(|result| result.map(|mysql_row| MySqlValueConverter::convert_row(&mysql_row)).map_err(|e| anyhow!(e)));
 
         Ok(Box::pin(stream))
     }
@@ -259,21 +275,27 @@ impl DatabaseConnection for PostgresConnection {
                 ssl_mode,
                 ..
             } => {
-                let pg_ssl_mode = PgValueConverter::map_ssl_mode(ssl_mode);
+                let (require_ssl, _verify) = MySqlValueConverter::map_ssl_mode(ssl_mode);
 
-                PgConnectOptions::new()
+                let mysql_ssl_mode = if require_ssl {
+                    MySqlSslMode::Required
+                } else {
+                    MySqlSslMode::Preferred
+                };
+
+                MySqlConnectOptions::new()
                     .host(hostname)
                     .port(*port)
                     .username(username)
                     .password(password)
                     .database(database)
-                    .ssl_mode(pg_ssl_mode)
+                    .ssl_mode(mysql_ssl_mode)
             }
-            _ => return Err(anyhow!("PostgreSQL requires server connection parameters")),
+            _ => return Err(anyhow!("MySQL requires server connection parameters")),
         };
 
         // Create a minimal pool for testing
-        let pool = PgPoolOptions::new()
+        let pool = MySqlPoolOptions::new()
             .max_connections(1)
             .acquire_timeout(Duration::from_secs(5))
             .connect_with(options)
@@ -289,9 +311,9 @@ impl DatabaseConnection for PostgresConnection {
     }
 }
 
-// Ensure PostgresConnection can be sent between threads
-unsafe impl Send for PostgresConnection {}
-unsafe impl Sync for PostgresConnection {}
+// Ensure MySqlConnection can be sent between threads
+unsafe impl Send for MySqlConnection {}
+unsafe impl Sync for MySqlConnection {}
 
 #[cfg(test)]
 mod tests {
@@ -300,44 +322,47 @@ mod tests {
     fn create_test_config() -> ConnectionConfig {
         ConnectionConfig::new(
             "test".to_string(),
-            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
             ConnectionParams::server(
                 "localhost".to_string(),
-                5432,
-                "postgres".to_string(),
+                3306,
+                "root".to_string(),
                 "password".to_string(),
-                "postgres".to_string(),
+                "mysql".to_string(),
             ),
         )
     }
 
     #[test]
-    fn test_postgres_connection_new() {
+    fn test_mysql_connection_new() {
         let config = create_test_config();
-        let conn = PostgresConnection::new(config.clone());
+        let conn = MySqlConnection::new(config.clone());
 
-        assert_eq!(conn.database_type(), DatabaseType::PostgreSQL);
+        assert_eq!(conn.database_type(), DatabaseType::MySQL);
         assert_eq!(conn.connection_config().name, "test");
     }
 
     #[test]
     fn test_is_select_query() {
-        assert!(PostgresConnection::is_select_query("SELECT * FROM users"));
-        assert!(PostgresConnection::is_select_query("select * from users"));
-        assert!(PostgresConnection::is_select_query("  SELECT * FROM users"));
-        assert!(PostgresConnection::is_select_query(
+        assert!(MySqlConnection::is_select_query("SELECT * FROM users"));
+        assert!(MySqlConnection::is_select_query("select * from users"));
+        assert!(MySqlConnection::is_select_query("  SELECT * FROM users"));
+        assert!(MySqlConnection::is_select_query(
             "WITH cte AS (SELECT 1) SELECT * FROM cte"
         ));
+        assert!(MySqlConnection::is_select_query("SHOW TABLES"));
+        assert!(MySqlConnection::is_select_query("DESCRIBE users"));
+        assert!(MySqlConnection::is_select_query("EXPLAIN SELECT * FROM users"));
 
-        assert!(!PostgresConnection::is_select_query("INSERT INTO users VALUES (1)"));
-        assert!(!PostgresConnection::is_select_query("UPDATE users SET name = 'test'"));
-        assert!(!PostgresConnection::is_select_query("DELETE FROM users"));
+        assert!(!MySqlConnection::is_select_query("INSERT INTO users VALUES (1)"));
+        assert!(!MySqlConnection::is_select_query("UPDATE users SET name = 'test'"));
+        assert!(!MySqlConnection::is_select_query("DELETE FROM users"));
     }
 
     #[test]
     fn test_build_connect_options() {
         let config = create_test_config();
-        let conn = PostgresConnection::new(config);
+        let conn = MySqlConnection::new(config);
 
         let result = conn.build_connect_options();
         assert!(result.is_ok());
@@ -347,10 +372,10 @@ mod tests {
     fn test_file_params_rejected() {
         let config = ConnectionConfig::new(
             "test".to_string(),
-            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
             ConnectionParams::file(std::path::PathBuf::from("/tmp/test.db"), false),
         );
-        let conn = PostgresConnection::new(config);
+        let conn = MySqlConnection::new(config);
 
         let result = conn.build_connect_options();
         assert!(result.is_err());

@@ -383,8 +383,6 @@ mod tests {
 
     #[test]
     fn test_server_params_rejected() {
-        use crate::services::database::traits::SslMode;
-
         let config = ConnectionConfig::new(
             "test".to_string(),
             DatabaseType::SQLite,
@@ -394,7 +392,6 @@ mod tests {
                 "user".to_string(),
                 "pass".to_string(),
                 "db".to_string(),
-                SslMode::Prefer,
             ),
         );
         let conn = SqliteConnection::new(config);

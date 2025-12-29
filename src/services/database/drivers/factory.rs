@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 
+use super::mysql::MySqlConnection;
 use super::postgres::PostgresConnection;
 use super::sqlite::SqliteConnection;
 use crate::services::database::traits::{
@@ -51,13 +52,7 @@ impl ConnectionFactory {
 
         match config.database_type {
             DatabaseType::PostgreSQL => Ok(PostgresConnection::boxed(config)),
-            DatabaseType::MySQL => {
-                // Will be implemented in Epic 4
-                Err(anyhow!(
-                    "MySQL support coming soon. \
-                     Please check back after Epic 4 is complete."
-                ))
-            }
+            DatabaseType::MySQL => Ok(MySqlConnection::boxed(config)),
             DatabaseType::SQLite => Ok(SqliteConnection::boxed(config)),
             DatabaseType::ClickHouse => {
                 // Will be implemented in Epic 6
@@ -98,9 +93,7 @@ impl ConnectionFactory {
         match config.database_type {
             DatabaseType::PostgreSQL => Ok(Box::new(PostgresConnection::new(config))),
             DatabaseType::SQLite => Ok(Box::new(SqliteConnection::new(config))),
-            DatabaseType::MySQL => {
-                Err(anyhow!("MySQL support coming soon."))
-            }
+            DatabaseType::MySQL => Ok(Box::new(MySqlConnection::new(config))),
             DatabaseType::ClickHouse => {
                 Err(anyhow!("ClickHouse support coming soon."))
             }
@@ -123,7 +116,7 @@ impl ConnectionFactory {
         match db_type {
             DatabaseType::PostgreSQL => true,  // Epic 2 - Implemented
             DatabaseType::SQLite => true,      // Epic 3 - Implemented
-            DatabaseType::MySQL => false,      // Epic 4
+            DatabaseType::MySQL => true,       // Epic 4 - Implemented
             DatabaseType::ClickHouse => false, // Epic 6
             DatabaseType::DuckDB => false,     // Epic 5
         }
@@ -155,7 +148,7 @@ impl ConnectionFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::database::traits::{ConnectionParams, SslMode};
+    use crate::services::database::traits::ConnectionParams;
     use std::path::PathBuf;
 
     #[test]
@@ -183,7 +176,6 @@ mod tests {
                 "postgres".to_string(),
                 "password".to_string(),
                 "postgres".to_string(),
-                SslMode::Prefer,
             ),
         );
 
@@ -229,7 +221,6 @@ mod tests {
                 "user".to_string(),
                 "pass".to_string(),
                 "db".to_string(),
-                SslMode::Prefer,
             ),
         );
 
@@ -239,10 +230,10 @@ mod tests {
 
     #[test]
     fn test_is_supported() {
-        // PostgreSQL and SQLite are now implemented
+        // PostgreSQL, SQLite, and MySQL are implemented
         assert!(ConnectionFactory::is_supported(DatabaseType::PostgreSQL));
         assert!(ConnectionFactory::is_supported(DatabaseType::SQLite));
-        assert!(!ConnectionFactory::is_supported(DatabaseType::MySQL));
+        assert!(ConnectionFactory::is_supported(DatabaseType::MySQL));
         assert!(!ConnectionFactory::is_supported(DatabaseType::ClickHouse));
         assert!(!ConnectionFactory::is_supported(DatabaseType::DuckDB));
     }
@@ -250,9 +241,10 @@ mod tests {
     #[test]
     fn test_supported_types() {
         let supported = ConnectionFactory::supported_types();
-        assert_eq!(supported.len(), 2);
+        assert_eq!(supported.len(), 3);
         assert!(supported.contains(&DatabaseType::PostgreSQL));
         assert!(supported.contains(&DatabaseType::SQLite));
+        assert!(supported.contains(&DatabaseType::MySQL));
     }
 
     #[test]
@@ -269,5 +261,42 @@ mod tests {
         let sqlite = all.iter().find(|(t, _)| *t == DatabaseType::SQLite);
         assert!(sqlite.is_some());
         assert!(sqlite.unwrap().1);
+
+        // Check MySQL is supported
+        let mysql = all.iter().find(|(t, _)| *t == DatabaseType::MySQL);
+        assert!(mysql.is_some());
+        assert!(mysql.unwrap().1);
+    }
+
+    #[test]
+    fn test_factory_creates_mysql() {
+        // Valid: MySQL with server params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::MySQL,
+            ConnectionParams::server(
+                "localhost".to_string(),
+                3306,
+                "root".to_string(),
+                "password".to_string(),
+                "test".to_string(),
+            ),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_factory_rejects_mysql_file() {
+        // Invalid: MySQL with file params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::MySQL,
+            ConnectionParams::file(PathBuf::from("/tmp/test.db"), false),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_err());
     }
 }
