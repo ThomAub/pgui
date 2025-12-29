@@ -212,6 +212,20 @@ impl StorageParams {
         }
     }
 
+    /// Create GCS parameters.
+    pub fn gcs(
+        bucket: String,
+        credentials_path: Option<PathBuf>,
+        project_id: Option<String>,
+    ) -> Self {
+        StorageParams::Gcs {
+            bucket,
+            credentials_path,
+            project_id,
+            extra_options: HashMap::new(),
+        }
+    }
+
     /// Create local filesystem parameters.
     pub fn local_fs(root_path: PathBuf) -> Self {
         StorageParams::LocalFs { root_path }

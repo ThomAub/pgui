@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 
+use super::gcs::GcsStorage;
 use super::local_fs::LocalFsStorage;
 use super::s3::S3Storage;
 use super::traits::BoxedStorageConnection;
@@ -49,16 +50,10 @@ impl StorageFactory {
 
         match config.storage_type {
             StorageType::S3 => Ok(S3Storage::boxed(config)),
+            StorageType::Gcs => Ok(GcsStorage::boxed(config)),
             StorageType::LocalFs => Ok(LocalFsStorage::boxed(config)),
-            StorageType::Gcs => {
-                Err(anyhow!(
-                    "Google Cloud Storage support coming soon."
-                ))
-            }
             StorageType::AzureBlob => {
-                Err(anyhow!(
-                    "Azure Blob Storage support coming soon."
-                ))
+                Err(anyhow!("Azure Blob Storage support coming soon."))
             }
         }
     }
@@ -75,8 +70,8 @@ impl StorageFactory {
     pub fn is_supported(storage_type: StorageType) -> bool {
         match storage_type {
             StorageType::S3 => true,
+            StorageType::Gcs => true,
             StorageType::LocalFs => true,
-            StorageType::Gcs => false,
             StorageType::AzureBlob => false,
         }
     }
@@ -158,16 +153,17 @@ mod tests {
     #[test]
     fn test_is_supported() {
         assert!(StorageFactory::is_supported(StorageType::S3));
+        assert!(StorageFactory::is_supported(StorageType::Gcs));
         assert!(StorageFactory::is_supported(StorageType::LocalFs));
-        assert!(!StorageFactory::is_supported(StorageType::Gcs));
         assert!(!StorageFactory::is_supported(StorageType::AzureBlob));
     }
 
     #[test]
     fn test_supported_types() {
         let supported = StorageFactory::supported_types();
-        assert_eq!(supported.len(), 2);
+        assert_eq!(supported.len(), 3);
         assert!(supported.contains(&StorageType::S3));
+        assert!(supported.contains(&StorageType::Gcs));
         assert!(supported.contains(&StorageType::LocalFs));
     }
 
@@ -181,9 +177,34 @@ mod tests {
         assert!(s3.is_some());
         assert!(s3.unwrap().1);
 
-        // Check GCS is not supported
+        // Check GCS is supported
         let gcs = all.iter().find(|(t, _)| *t == StorageType::Gcs);
         assert!(gcs.is_some());
-        assert!(!gcs.unwrap().1);
+        assert!(gcs.unwrap().1);
+
+        // Check Azure is not supported
+        let azure = all.iter().find(|(t, _)| *t == StorageType::AzureBlob);
+        assert!(azure.is_some());
+        assert!(!azure.unwrap().1);
+    }
+
+    #[test]
+    fn test_factory_creates_gcs() {
+        use std::collections::HashMap;
+
+        // Valid: GCS with bucket
+        let config = StorageConfig::new(
+            "test".to_string(),
+            StorageType::Gcs,
+            StorageParams::Gcs {
+                bucket: "my-bucket".to_string(),
+                credentials_path: None,
+                project_id: None,
+                extra_options: HashMap::new(),
+            },
+        );
+
+        let result = StorageFactory::create(config);
+        assert!(result.is_ok());
     }
 }

@@ -6,10 +6,10 @@
 //! Supported storage backends:
 //!
 //! - **Amazon S3** and S3-compatible services (MinIO, Cloudflare R2, DigitalOcean Spaces)
+//! - **Google Cloud Storage (GCS)** for Google Cloud Platform
 //! - **Local Filesystem** for development and testing
 //!
 //! Future support planned for:
-//! - Google Cloud Storage (GCS)
 //! - Azure Blob Storage
 //!
 //! # Architecture
@@ -69,6 +69,7 @@
 //! ```
 
 mod factory;
+mod gcs;
 mod local_fs;
 mod manager;
 mod s3;
@@ -82,5 +83,6 @@ pub use traits::{BoxedStorageConnection, BucketOperations, StorageConnection};
 pub use types::{ObjectInfo, StorageConfig, StorageOperationResult, StorageParams, StorageType};
 
 // Re-export storage implementations
+pub use gcs::GcsStorage;
 pub use local_fs::LocalFsStorage;
 pub use s3::S3Storage;
