@@ -5,6 +5,7 @@
 
 use anyhow::{anyhow, Result};
 
+use super::clickhouse::ClickHouseConnection;
 use super::duckdb::DuckDbConnection;
 use super::mysql::MySqlConnection;
 use super::postgres::PostgresConnection;
@@ -55,13 +56,7 @@ impl ConnectionFactory {
             DatabaseType::PostgreSQL => Ok(PostgresConnection::boxed(config)),
             DatabaseType::MySQL => Ok(MySqlConnection::boxed(config)),
             DatabaseType::SQLite => Ok(SqliteConnection::boxed(config)),
-            DatabaseType::ClickHouse => {
-                // Will be implemented in Epic 6
-                Err(anyhow!(
-                    "ClickHouse support coming soon. \
-                     Please check back after Epic 6 is complete."
-                ))
-            }
+            DatabaseType::ClickHouse => Ok(ClickHouseConnection::boxed(config)),
             DatabaseType::DuckDB => Ok(DuckDbConnection::boxed(config)),
         }
     }
@@ -89,9 +84,7 @@ impl ConnectionFactory {
             DatabaseType::PostgreSQL => Ok(Box::new(PostgresConnection::new(config))),
             DatabaseType::SQLite => Ok(Box::new(SqliteConnection::new(config))),
             DatabaseType::MySQL => Ok(Box::new(MySqlConnection::new(config))),
-            DatabaseType::ClickHouse => {
-                Err(anyhow!("ClickHouse support coming soon."))
-            }
+            DatabaseType::ClickHouse => Ok(Box::new(ClickHouseConnection::new(config))),
             DatabaseType::DuckDB => Ok(Box::new(DuckDbConnection::new(config))),
         }
     }
@@ -111,7 +104,7 @@ impl ConnectionFactory {
             DatabaseType::SQLite => true,      // Epic 3 - Implemented
             DatabaseType::MySQL => true,       // Epic 4 - Implemented
             DatabaseType::DuckDB => true,      // Epic 5 - Implemented
-            DatabaseType::ClickHouse => false, // Epic 6
+            DatabaseType::ClickHouse => true,  // Epic 6 - Implemented
         }
     }
 
@@ -223,22 +216,23 @@ mod tests {
 
     #[test]
     fn test_is_supported() {
-        // PostgreSQL, SQLite, MySQL, and DuckDB are implemented
+        // All database types are now implemented
         assert!(ConnectionFactory::is_supported(DatabaseType::PostgreSQL));
         assert!(ConnectionFactory::is_supported(DatabaseType::SQLite));
         assert!(ConnectionFactory::is_supported(DatabaseType::MySQL));
         assert!(ConnectionFactory::is_supported(DatabaseType::DuckDB));
-        assert!(!ConnectionFactory::is_supported(DatabaseType::ClickHouse));
+        assert!(ConnectionFactory::is_supported(DatabaseType::ClickHouse));
     }
 
     #[test]
     fn test_supported_types() {
         let supported = ConnectionFactory::supported_types();
-        assert_eq!(supported.len(), 4);
+        assert_eq!(supported.len(), 5);
         assert!(supported.contains(&DatabaseType::PostgreSQL));
         assert!(supported.contains(&DatabaseType::SQLite));
         assert!(supported.contains(&DatabaseType::MySQL));
         assert!(supported.contains(&DatabaseType::DuckDB));
+        assert!(supported.contains(&DatabaseType::ClickHouse));
     }
 
     #[test]
@@ -265,6 +259,11 @@ mod tests {
         let duckdb = all.iter().find(|(t, _)| *t == DatabaseType::DuckDB);
         assert!(duckdb.is_some());
         assert!(duckdb.unwrap().1);
+
+        // Check ClickHouse is supported
+        let clickhouse = all.iter().find(|(t, _)| *t == DatabaseType::ClickHouse);
+        assert!(clickhouse.is_some());
+        assert!(clickhouse.unwrap().1);
     }
 
     #[test]
@@ -338,6 +337,38 @@ mod tests {
                 "pass".to_string(),
                 "db".to_string(),
             ),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_factory_creates_clickhouse() {
+        // Valid: ClickHouse with server params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::ClickHouse,
+            ConnectionParams::server(
+                "localhost".to_string(),
+                8123,
+                "default".to_string(),
+                "".to_string(),
+                "default".to_string(),
+            ),
+        );
+
+        let result = ConnectionFactory::create(config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_factory_rejects_clickhouse_file() {
+        // Invalid: ClickHouse with file params
+        let config = ConnectionConfig::new(
+            "test".to_string(),
+            DatabaseType::ClickHouse,
+            ConnectionParams::file(PathBuf::from("/tmp/test.db"), false),
         );
 
         let result = ConnectionFactory::create(config);
