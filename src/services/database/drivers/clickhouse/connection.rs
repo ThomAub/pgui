@@ -17,7 +17,7 @@ use serde_json::Value as JsonValue;
 use super::types::ClickHouseValueConverter;
 use crate::services::database::traits::{
     BoxedConnection, Cell, ColumnInfo, ConnectionConfig, ConnectionParams, DatabaseConnection,
-    DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult, Value,
+    DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult,
 };
 
 /// ClickHouse database connection.

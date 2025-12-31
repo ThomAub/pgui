@@ -4,7 +4,6 @@ use gpui::*;
 use gpui_component::{
     h_flex, v_flex,
     label::Label,
-    Sizable as _,
 };
 
 use crate::keybindings::bindings::get_all_keybindings;
@@ -49,19 +48,14 @@ impl HelpOverlay {
                     )
             }))
     }
-}
 
-impl IntoElement for HelpOverlay {
-    type Element = Div;
-
-    fn into_element(self) -> Self::Element {
+    fn render_element(self) -> Stateful<Div> {
         let keybindings = get_all_keybindings();
 
         div()
             .id("help-overlay")
             .absolute()
             .inset_0()
-            .z_index(1000)
             .bg(gpui::rgba(0x000000DD))
             .flex()
             .items_center()
@@ -75,7 +69,7 @@ impl IntoElement for HelpOverlay {
                     .rounded_lg()
                     .max_w(px(800.))
                     .max_h(px(600.))
-                    .overflow_y_scroll()
+                    .overflow_hidden()
                     .child(
                         h_flex()
                             .justify_between()
@@ -103,5 +97,13 @@ impl IntoElement for HelpOverlay {
                             }))
                     )
             )
+    }
+}
+
+impl IntoElement for HelpOverlay {
+    type Element = Stateful<Div>;
+
+    fn into_element(self) -> Self::Element {
+        self.render_element()
     }
 }

@@ -4,7 +4,13 @@
 
 use gpui::{App, KeyBinding};
 
-use super::actions::*;
+use super::actions::global::*;
+use super::actions::editor::*;
+use super::actions::navigation::*;
+use super::actions::focus::*;
+use super::actions::results::*;
+use super::actions::storage::*;
+use super::actions::connection::*;
 
 /// Register all default keybindings with the application.
 pub fn register_keybindings(cx: &mut App) {
