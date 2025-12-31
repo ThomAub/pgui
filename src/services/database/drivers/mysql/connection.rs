@@ -3,6 +3,8 @@
 //! This module implements the `DatabaseConnection` trait for MySQL
 //! using SQLx's MySqlPool.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
 use async_trait::async_trait;

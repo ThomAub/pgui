@@ -37,13 +37,13 @@ pub mod types;
 // Re-export commonly used types
 pub use connection::{
     BoxedConnection, DatabaseConnection, ErrorResult, ModifiedResult, QueryExecutionResult,
-    SelectResult, Transaction, Transactional,
+    SelectResult,
 };
 
 pub use row::{Cell, ColumnInfo, Row, Value};
 
 pub use schema::{
-    BoxedSchemaIntrospection, ColumnDetail, ConstraintInfo, DatabaseInfo, DatabaseSchema,
+    ColumnDetail, ConstraintInfo, DatabaseInfo, DatabaseSchema,
     ForeignKeyInfo, IndexInfo, SchemaIntrospection, TableInfo, TableSchema,
 };
 

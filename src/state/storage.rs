@@ -2,11 +2,12 @@
 //!
 //! This module manages the global state for blob storage connections (S3, GCS, Azure, etc.).
 
+#![allow(dead_code)]
+
 use gpui::*;
 
 use crate::services::{
     database::storage::{StorageConfig, StorageManager, StorageType},
-    storage::StorageConnectionsRepository,
     AppStore,
 };
 

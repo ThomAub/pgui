@@ -31,4 +31,3 @@ mod schema;
 mod types;
 
 pub use connection::MySqlConnection;
-pub use types::MySqlValueConverter;

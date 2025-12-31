@@ -3,6 +3,9 @@
 //! This module contains:
 //! - `SslMode` - SSL mode options for database connections
 //! - `ConnectionInfo` - Database connection configuration (supports multiple database types)
+
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use gpui::SharedString;
 use gpui_component::select::SelectItem;

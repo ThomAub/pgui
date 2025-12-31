@@ -26,7 +26,7 @@ use gpui_component::ActiveTheme;
 use gpui_component::Root;
 use gpui_component::resizable::{resizable_panel, v_resizable};
 use gpui_component::spinner::Spinner;
-use gpui_component::{h_flex, Icon, IconName, Selectable as _, Sizable as _};
+use gpui_component::{h_flex, Icon, Selectable as _, Sizable as _};
 
 /// Current workspace mode.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,6 +40,7 @@ pub enum WorkspaceMode {
 /// Currently focused panel in the workspace.
 #[cfg(feature = "keyboard-nav")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code)]
 pub enum FocusedPanel {
     Editor,
     Tables,

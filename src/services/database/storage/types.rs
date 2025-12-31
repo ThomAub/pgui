@@ -3,6 +3,8 @@
 //! This module defines types for blob storage connections including
 //! storage types, configuration, and object metadata.
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

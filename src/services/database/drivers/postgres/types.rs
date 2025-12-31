@@ -3,9 +3,11 @@
 //! This module handles conversion between PostgreSQL-specific types (from SQLx)
 //! and the generic `Value` type used across all database drivers.
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::postgres::{PgColumn, PgRow, PgTypeInfo};
+use sqlx::postgres::{PgColumn, PgRow};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use uuid::Uuid;
 

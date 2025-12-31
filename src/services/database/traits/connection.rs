@@ -3,6 +3,8 @@
 //! This module defines the `DatabaseConnection` trait that all database drivers must implement,
 //! as well as the `Transactional` trait for databases that support transactions.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::stream::BoxStream;

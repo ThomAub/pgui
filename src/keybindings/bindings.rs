@@ -120,6 +120,7 @@ fn connection_bindings() -> Vec<KeyBinding> {
 pub struct KeybindingInfo {
     pub key: &'static str,
     pub description: &'static str,
+    #[allow(dead_code)]
     pub context: Option<&'static str>,
 }
 

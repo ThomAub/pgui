@@ -8,6 +8,8 @@
 //! - Native TCP (port 9000) - higher performance but binary protocol
 //! - MySQL protocol (port 9004) - for MySQL compatibility
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
 use async_trait::async_trait;

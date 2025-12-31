@@ -79,10 +79,4 @@ mod types;
 // Re-export main types
 pub use factory::StorageFactory;
 pub use manager::StorageManager;
-pub use traits::{BoxedStorageConnection, BucketOperations, StorageConnection};
-pub use types::{ObjectInfo, StorageConfig, StorageOperationResult, StorageParams, StorageType};
-
-// Re-export storage implementations
-pub use gcs::GcsStorage;
-pub use local_fs::LocalFsStorage;
-pub use s3::S3Storage;
+pub use types::{ObjectInfo, StorageConfig, StorageParams, StorageType};

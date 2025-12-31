@@ -38,4 +38,3 @@ mod schema;
 mod types;
 
 pub use connection::SqliteConnection;
-pub use types::SqliteValueConverter;

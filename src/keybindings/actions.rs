@@ -2,8 +2,6 @@
 //!
 //! This module defines all the action types that can be triggered via keyboard shortcuts.
 
-use gpui::actions;
-
 // ============================================================================
 // Global Actions - Work in any context
 // ============================================================================

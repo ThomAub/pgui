@@ -23,4 +23,3 @@ mod schema;
 mod types;
 
 pub use connection::DuckDbConnection;
-pub use types::DuckDbValueConverter;

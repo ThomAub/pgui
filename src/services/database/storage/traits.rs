@@ -3,6 +3,8 @@
 //! This module defines the core trait for storage backends, providing
 //! a unified interface for blob storage operations across different providers.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use async_trait::async_trait;
 use bytes::Bytes;

@@ -3,6 +3,8 @@
 //! This module implements the `DatabaseConnection` trait for SQLite
 //! using SQLx's SqlitePool.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
 use async_trait::async_trait;
@@ -15,7 +17,7 @@ use std::time::Duration;
 
 use super::types::SqliteValueConverter;
 use crate::services::database::traits::{
-    BoxedConnection, ColumnInfo, ConnectionConfig, ConnectionParams, DatabaseConnection,
+    BoxedConnection, ConnectionConfig, ConnectionParams, DatabaseConnection,
     DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult,
 };
 

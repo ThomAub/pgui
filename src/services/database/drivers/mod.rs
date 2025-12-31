@@ -19,11 +19,6 @@ pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 
+// Re-export for public API (will be used once multi-database is fully integrated)
+#[allow(unused_imports)]
 pub use factory::ConnectionFactory;
-
-// Re-export main driver types
-pub use clickhouse::ClickHouseConnection;
-pub use duckdb::DuckDbConnection;
-pub use mysql::MySqlConnection;
-pub use postgres::PostgresConnection;
-pub use sqlite::SqliteConnection;

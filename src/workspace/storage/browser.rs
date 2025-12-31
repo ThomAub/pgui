@@ -19,6 +19,7 @@ use crate::{
 };
 
 /// Events emitted by the storage browser.
+#[allow(dead_code)]
 pub enum StorageBrowserEvent {
     /// A file was selected.
     FileSelected(ObjectInfo),

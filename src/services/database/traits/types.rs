@@ -5,6 +5,8 @@
 //! - `ConnectionConfig` - Unified connection configuration
 //! - `ConnectionParams` - Database-specific connection parameters
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

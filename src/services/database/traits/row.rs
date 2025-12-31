@@ -6,6 +6,8 @@
 //! - `Row` - A row of cells from a query result
 //! - `ColumnInfo` - Metadata about a column in a result set
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

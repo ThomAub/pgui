@@ -58,7 +58,7 @@ impl GcsStorage {
 
     /// Build the OpenDAL operator.
     async fn build_operator(&self) -> Result<Operator> {
-        let (bucket, credentials_path, project_id) = self.get_gcs_params()?;
+        let (bucket, credentials_path, _project_id) = self.get_gcs_params()?;
 
         let mut builder = Gcs::default();
 

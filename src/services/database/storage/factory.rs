@@ -3,6 +3,8 @@
 //! The factory pattern allows creating the appropriate storage connection
 //! based on the storage configuration's type.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 
 use super::gcs::GcsStorage;

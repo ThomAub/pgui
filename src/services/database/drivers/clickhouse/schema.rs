@@ -12,6 +12,8 @@
 //! Note: ClickHouse uses a different indexing model than traditional RDBMS.
 //! Primary keys define data ordering (sorting keys), not unique constraints.
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use async_trait::async_trait;
 

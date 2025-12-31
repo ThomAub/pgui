@@ -2,6 +2,8 @@
 //!
 //! This module handles converting DuckDB-specific types to our unified Value type.
 
+#![allow(dead_code)]
+
 use crate::services::database::traits::{ColumnInfo, Row as TraitRow, Value};
 use duckdb::types::ValueRef;
 use duckdb::Row;

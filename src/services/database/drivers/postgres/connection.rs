@@ -3,6 +3,8 @@
 //! This module implements the `DatabaseConnection` trait for PostgreSQL
 //! using SQLx's PgPool.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
 use async_trait::async_trait;
@@ -14,8 +16,8 @@ use std::time::Duration;
 
 use super::types::PgValueConverter;
 use crate::services::database::traits::{
-    BoxedConnection, ColumnInfo, ConnectionConfig, ConnectionParams, DatabaseConnection,
-    DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult, SslMode,
+    BoxedConnection, ConnectionConfig, ConnectionParams, DatabaseConnection,
+    DatabaseType, ErrorResult, ModifiedResult, QueryExecutionResult, Row, SelectResult,
 };
 
 /// PostgreSQL database connection.

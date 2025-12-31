@@ -3,6 +3,8 @@
 //! The factory pattern allows creating the appropriate database connection
 //! based on the connection configuration's database type.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 
 use super::clickhouse::ClickHouseConnection;

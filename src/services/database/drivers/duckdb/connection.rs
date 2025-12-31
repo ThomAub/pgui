@@ -3,6 +3,8 @@
 //! This module implements the `DatabaseConnection` trait for DuckDB.
 //! DuckDB uses a synchronous API, so we wrap operations with smol::unblock.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use duckdb::{Config, Connection};

@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use sqlx::{Row, SqlitePool};
+use sqlx::Row;
 
 use super::connection::SqliteConnection;
 use crate::services::database::traits::{

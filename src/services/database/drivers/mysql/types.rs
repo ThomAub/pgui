@@ -3,9 +3,11 @@
 //! This module handles conversion between MySQL-specific types (from SQLx)
 //! and the generic `Value` type used across all database drivers.
 
+#![allow(dead_code)]
+
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use rust_decimal::Decimal;
-use sqlx::mysql::{MySqlColumn, MySqlRow, MySqlTypeInfo};
+use sqlx::mysql::{MySqlColumn, MySqlRow};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
 use crate::services::database::traits::{Cell, ColumnInfo, Row as TraitRow, Value};

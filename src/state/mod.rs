@@ -32,7 +32,7 @@ pub use actions::{
 
 // Re-export storage actions
 pub use storage_actions::{
-    add_storage_connection, delete_storage_connection, storage_connect, storage_disconnect,
+    add_storage_connection, delete_storage_connection, storage_connect,
     test_storage_connection, update_storage_connection,
 };
 

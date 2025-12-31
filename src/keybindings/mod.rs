@@ -27,9 +27,6 @@ pub use actions::connection;
 pub use actions::editor;
 pub use actions::focus;
 pub use actions::global;
-pub use actions::navigation;
-pub use actions::results;
-pub use actions::storage;
 pub use bindings::register_keybindings;
 
 /// Initialize the keybindings system.

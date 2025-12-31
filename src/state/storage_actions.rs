@@ -2,8 +2,9 @@
 //!
 //! This module contains actions that modify the global StorageState.
 
+#![allow(dead_code)]
+
 use gpui::*;
-use gpui_component::{notification::NotificationType, WindowExt as _};
 
 use crate::services::{
     database::storage::{StorageConfig, StorageManager},
@@ -30,7 +31,7 @@ pub fn storage_connect(config: &StorageConfig, cx: &mut App) {
 
         // Create config with secret if needed
         let mut connect_config = config.clone();
-        if let Some(secret) = secret {
+        if let Some(_secret) = secret {
             // Inject secret into params
             match &mut connect_config.params {
                 crate::services::database::storage::StorageParams::S3 { .. } => {

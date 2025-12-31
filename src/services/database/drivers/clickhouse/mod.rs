@@ -14,4 +14,3 @@ mod schema;
 mod types;
 
 pub use connection::ClickHouseConnection;
-pub use types::ClickHouseValueConverter;

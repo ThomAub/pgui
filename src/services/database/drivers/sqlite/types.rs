@@ -10,6 +10,8 @@
 //! - BLOB: Binary data
 //! - NULL: Null value
 
+#![allow(dead_code)]
+
 use sqlx::sqlite::{SqliteColumn, SqliteRow};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 

@@ -3,6 +3,8 @@
 //! This module provides a manager for storage connections, handling
 //! the lifecycle of connections and providing a unified API for storage operations.
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_lock::RwLock;
 use bytes::Bytes;

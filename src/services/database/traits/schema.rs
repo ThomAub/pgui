@@ -3,6 +3,8 @@
 //! This module defines the `SchemaIntrospection` trait for databases that support
 //! querying their schema metadata (tables, columns, indexes, etc.).
 
+#![allow(dead_code)]
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

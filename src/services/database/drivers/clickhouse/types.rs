@@ -15,6 +15,8 @@
 //! - Enum8, Enum16
 //! - LowCardinality(T)
 
+#![allow(dead_code)]
+
 use chrono::{NaiveDate, NaiveDateTime};
 use serde_json::Value as JsonValue;
 

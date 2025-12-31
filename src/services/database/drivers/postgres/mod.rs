@@ -31,4 +31,3 @@ mod schema;
 mod types;
 
 pub use connection::PostgresConnection;
-pub use types::PgValueConverter;

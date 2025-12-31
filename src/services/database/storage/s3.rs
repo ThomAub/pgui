@@ -7,6 +7,8 @@
 //! - DigitalOcean Spaces
 //! - Any S3-compatible service
 
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
