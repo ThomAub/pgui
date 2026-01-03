@@ -14,7 +14,7 @@ use gpui_component::{
 };
 
 use crate::{
-    services::{ConnectionInfo, DatabaseManager, TableInfo},
+    services::{ConnectionInfo, MultiDatabaseManager, TableInfo},
     state::ConnectionState,
 };
 
@@ -29,7 +29,7 @@ actions!(tables_tree, [SelectItem]);
 pub struct TablesTree {
     tree_state: Entity<TreeState>,
     selected_item: Option<TreeItem>,
-    db_manager: Option<DatabaseManager>,
+    db_manager: Option<MultiDatabaseManager>,
     active_connection: Option<ConnectionInfo>,
     _subscriptions: Vec<Subscription>,
 }

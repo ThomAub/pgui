@@ -1,6 +1,6 @@
 use gpui::*;
 
-use crate::services::{AppStore, ConnectionInfo, DatabaseManager};
+use crate::services::{AppStore, ConnectionInfo, MultiDatabaseManager};
 
 #[derive(Clone, PartialEq)]
 pub enum ConnectionStatus {
@@ -13,7 +13,7 @@ pub enum ConnectionStatus {
 pub struct ConnectionState {
     pub saved_connections: Vec<ConnectionInfo>,
     pub active_connection: Option<ConnectionInfo>,
-    pub db_manager: DatabaseManager,
+    pub db_manager: MultiDatabaseManager,
     pub connection_state: ConnectionStatus,
 }
 
@@ -21,7 +21,7 @@ impl Global for ConnectionState {}
 
 impl ConnectionState {
     pub fn init(cx: &mut App) {
-        let db_manager = DatabaseManager::new();
+        let db_manager = MultiDatabaseManager::new();
         let this = ConnectionState {
             saved_connections: vec![],
             active_connection: None,

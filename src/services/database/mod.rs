@@ -1,4 +1,5 @@
 mod manager;
+mod multi_manager;
 mod query;
 mod schema;
 mod types;
@@ -9,6 +10,7 @@ pub mod storage;
 pub mod traits;
 
 pub use manager::DatabaseManager;
+pub use multi_manager::MultiDatabaseManager;
 
 // Re-export storage types (public API for multi-database abstraction)
 #[allow(unused_imports)]

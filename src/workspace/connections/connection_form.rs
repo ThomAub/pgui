@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use crate::{
     services::{
-        database::traits::DatabaseType, ConnectionInfo, ConnectionsRepository, DatabaseManager,
+        database::traits::DatabaseType, ConnectionInfo, ConnectionsRepository, MultiDatabaseManager,
         SslMode,
     },
     state::{add_connection, connect, delete_connection, update_connection},
@@ -395,25 +395,15 @@ impl ConnectionForm {
         }
 
         if let Some(connection) = self.get_connection(window, cx) {
-            // Only PostgreSQL is fully supported for testing right now
-            if connection.database_type != DatabaseType::PostgreSQL {
-                let msg: SharedString = format!(
-                    "Test connection not yet implemented for {}. Configuration saved.",
-                    connection.database_type.display_name()
-                )
-                .into();
-                window.push_notification((NotificationType::Warning, msg), cx);
-                return;
-            }
-
             self.is_testing = true;
             cx.notify();
 
-            let connect_options = connection.to_pg_connect_options();
+            // Convert to multi-database connection config
+            let config = connection.to_connection_config();
             let entity = cx.entity();
 
             cx.spawn_in(window, async move |_this, cx| {
-                let result = DatabaseManager::test_connection_options(connect_options).await;
+                let result = MultiDatabaseManager::test_connection(config).await;
 
                 let _ = cx.update(|window, cx| {
                     match result {
