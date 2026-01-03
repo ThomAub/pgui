@@ -1,6 +1,8 @@
 use gpui::AsyncApp;
 
+use crate::services::database::storage::ObjectInfo;
 use crate::services::{ColumnDetail, DatabaseSchema, QueryExecutionResult, TableSchema};
+use crate::state::StorageState;
 use crate::{
     services::agent::{ToolCallData, ToolResultData},
     state::ConnectionState,
@@ -114,6 +116,177 @@ pub async fn execute_tools(tool_calls: Vec<ToolCallData>, cx: &AsyncApp) -> Vec<
                         }
                     }
                     None => error_result("table_name is required"),
+                }
+            }
+
+            // ================================================================
+            // Storage Tools
+            // ================================================================
+            "list_storage_files" => {
+                let path = call
+                    .input
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("/");
+
+                let error_result = |msg: &str| ToolResultData {
+                    tool_use_id: call.id.clone(),
+                    content: msg.to_string(),
+                    is_error: true,
+                };
+
+                match cx.read_global::<StorageState, _>(|state, _cx| state.storage_manager.clone()) {
+                    Ok(manager) => match manager.list(path).await {
+                        Ok(objects) => {
+                            let formatted = format_storage_list_for_llm(&objects);
+                            ToolResultData {
+                                tool_use_id: call.id,
+                                content: formatted,
+                                is_error: false,
+                            }
+                        }
+                        Err(e) => error_result(&format!("Failed to list files: {}", e)),
+                    },
+                    Err(_) => error_result("Storage not connected"),
+                }
+            }
+
+            "get_storage_info" => {
+                let error_result = |msg: &str| ToolResultData {
+                    tool_use_id: call.id.clone(),
+                    content: msg.to_string(),
+                    is_error: true,
+                };
+
+                match cx.read_global::<StorageState, _>(|state, _cx| {
+                    (
+                        state.storage_manager.clone(),
+                        state.active_connection.clone(),
+                    )
+                }) {
+                    Ok((manager, active_conn)) => {
+                        let storage_type = manager.storage_type().await;
+                        let is_connected = manager.is_connected().await;
+
+                        let mut info = String::new();
+                        info.push_str("## Storage Connection Info\n\n");
+                        info.push_str(&format!(
+                            "- **Status**: {}\n",
+                            if is_connected {
+                                "Connected"
+                            } else {
+                                "Disconnected"
+                            }
+                        ));
+
+                        if let Some(conn) = active_conn {
+                            info.push_str(&format!("- **Name**: {}\n", conn.name));
+                            info.push_str(&format!(
+                                "- **Type**: {}\n",
+                                storage_type
+                                    .map(|t| t.display_name().to_string())
+                                    .unwrap_or_else(|| "Unknown".to_string())
+                            ));
+
+                            // Add bucket/path info based on type
+                            match &conn.params {
+                                crate::services::database::storage::StorageParams::S3 {
+                                    bucket,
+                                    region,
+                                    ..
+                                } => {
+                                    info.push_str(&format!("- **Bucket**: {}\n", bucket));
+                                    info.push_str(&format!("- **Region**: {}\n", region));
+                                }
+                                crate::services::database::storage::StorageParams::Gcs {
+                                    bucket,
+                                    ..
+                                } => {
+                                    info.push_str(&format!("- **Bucket**: {}\n", bucket));
+                                }
+                                crate::services::database::storage::StorageParams::LocalFs {
+                                    root_path,
+                                } => {
+                                    info.push_str(&format!(
+                                        "- **Root Path**: {}\n",
+                                        root_path.display()
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            info.push_str("\nNo storage connection configured.\n");
+                        }
+
+                        ToolResultData {
+                            tool_use_id: call.id,
+                            content: info,
+                            is_error: false,
+                        }
+                    }
+                    Err(_) => error_result("Failed to read storage state"),
+                }
+            }
+
+            "read_storage_file_preview" => {
+                let path = call.input.get("path").and_then(|v| v.as_str());
+
+                let error_result = |msg: &str| ToolResultData {
+                    tool_use_id: call.id.clone(),
+                    content: msg.to_string(),
+                    is_error: true,
+                };
+
+                match path {
+                    Some(file_path) => {
+                        match cx
+                            .read_global::<StorageState, _>(|state, _cx| state.storage_manager.clone())
+                        {
+                            Ok(manager) => {
+                                // Read first 4KB
+                                match manager.read_range(file_path, 0, 4096).await {
+                                    Ok(data) => {
+                                        // Try to convert to string, fallback to hex preview
+                                        let content = match String::from_utf8(data.clone()) {
+                                            Ok(text) => {
+                                                let preview = if text.len() > 4000 {
+                                                    format!("{}...\n\n_(truncated)_", &text[..4000])
+                                                } else {
+                                                    text
+                                                };
+                                                format!(
+                                                    "## File Preview: {}\n\n```\n{}\n```",
+                                                    file_path, preview
+                                                )
+                                            }
+                                            Err(_) => {
+                                                format!(
+                                                    "## File Preview: {}\n\n_Binary file ({} bytes preview)_\n\nFirst 64 bytes (hex):\n```\n{}\n```",
+                                                    file_path,
+                                                    data.len(),
+                                                    data.iter()
+                                                        .take(64)
+                                                        .map(|b| format!("{:02x}", b))
+                                                        .collect::<Vec<_>>()
+                                                        .join(" ")
+                                                )
+                                            }
+                                        };
+                                        ToolResultData {
+                                            tool_use_id: call.id,
+                                            content,
+                                            is_error: false,
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error_result(&format!("Failed to read file: {}", e))
+                                    }
+                                }
+                            }
+                            Err(_) => error_result("Storage not connected"),
+                        }
+                    }
+                    None => error_result("path is required"),
                 }
             }
 
@@ -332,4 +505,67 @@ fn format_column_for_llm(col: &ColumnDetail, output: &mut String) {
 
     output.push_str(&col_line);
     output.push('\n');
+}
+
+// ============================================================================
+// Storage Formatting Helpers
+// ============================================================================
+
+/// Format a list of storage objects for LLM consumption
+fn format_storage_list_for_llm(objects: &[ObjectInfo]) -> String {
+    if objects.is_empty() {
+        return "## Storage Contents\n\n_No files or directories found._".to_string();
+    }
+
+    let mut output = String::new();
+    output.push_str(&format!(
+        "## Storage Contents ({} items)\n\n",
+        objects.len()
+    ));
+
+    // Separate directories and files
+    let (dirs, files): (Vec<_>, Vec<_>) = objects.iter().partition(|o| o.is_dir);
+
+    // List directories first
+    if !dirs.is_empty() {
+        output.push_str("### Directories\n");
+        for dir in dirs {
+            output.push_str(&format!("- **{}**/\n", dir.path));
+        }
+        output.push('\n');
+    }
+
+    // List files with size and modification time
+    if !files.is_empty() {
+        output.push_str("### Files\n");
+        output.push_str("| Name | Size | Last Modified |\n");
+        output.push_str("|------|------|---------------|\n");
+        for file in files {
+            let size = file.size.map(format_file_size).unwrap_or_else(|| "-".to_string());
+            let modified = file
+                .last_modified
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "-".to_string());
+            output.push_str(&format!("| {} | {} | {} |\n", file.path, size, modified));
+        }
+    }
+
+    output
+}
+
+/// Format file size in human-readable format
+fn format_file_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
 }

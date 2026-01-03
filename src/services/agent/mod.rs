@@ -15,6 +15,9 @@ mod types;
 pub use client::{
     Agent, AgentBuilder, create_get_schema_tool, create_get_table_columns_tool,
     create_get_tables_tool,
+    // Storage tools
+    create_get_storage_info_tool, create_list_storage_files_tool,
+    create_read_storage_file_preview_tool,
 };
 
 // Re-export files API
