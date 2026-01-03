@@ -14,7 +14,10 @@ pub static THEMES: LazyLock<HashMap<SharedString, ThemeConfig>> = LazyLock::new(
     }
 
     let mut themes = HashMap::new();
-    for source in [include_str!("./catppuccin.json")] {
+    for source in [
+        include_str!("./catppuccin.json"),
+        include_str!("./cursor.json"),
+    ] {
         let theme_set = parse_themes(source);
         for theme in theme_set.themes {
             themes.insert(theme.name.clone(), theme);

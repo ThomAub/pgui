@@ -1,14 +1,22 @@
 //! Connection type definitions.
 //!
 //! This module contains:
-//! - `SslMode` - SSL mode options for PostgreSQL connections
-//! - `ConnectionInfo` - PostgreSQL connection configuration
+//! - `SslMode` - SSL mode options for database connections
+//! - `ConnectionInfo` - Database connection configuration (supports multiple database types)
+
+#![allow(dead_code)]
+
 use chrono::{DateTime, Utc};
 use gpui::SharedString;
 use gpui_component::select::SelectItem;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
+use std::path::PathBuf;
 use uuid::Uuid;
+
+use crate::services::database::traits::{
+    ConnectionConfig, ConnectionParams, DatabaseType, SslMode as TraitSslMode,
+};
 
 /// SSL mode options for PostgreSQL connections
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -137,24 +145,49 @@ impl SslMode {
     }
 }
 
-/// PostgreSQL connection configuration
+/// Database connection configuration.
+///
+/// Supports both server-based databases (PostgreSQL, MySQL, ClickHouse) and
+/// file-based databases (SQLite, DuckDB).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionInfo {
     #[serde(default = "Uuid::new_v4")]
     pub id: Uuid,
     pub name: String,
+
+    /// The type of database (defaults to PostgreSQL for backward compatibility)
+    #[serde(default)]
+    pub database_type: DatabaseType,
+
+    // Server-based connection fields (PostgreSQL, MySQL, ClickHouse)
+    #[serde(default)]
     pub hostname: String,
+    #[serde(default)]
     pub username: String,
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub password: String,
+    #[serde(default)]
     pub database: String,
+    #[serde(default = "default_port")]
     pub port: usize,
     #[serde(default)]
     pub ssl_mode: SslMode,
+
+    // File-based connection fields (SQLite, DuckDB)
+    /// Path to the database file (for SQLite, DuckDB)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_path: Option<PathBuf>,
+    /// Open in read-only mode (for file-based databases)
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+fn default_port() -> usize {
+    5432
 }
 
 impl ConnectionInfo {
-    /// Create a new connection info with the given parameters
+    /// Create a new server-based connection info (PostgreSQL, MySQL, ClickHouse)
     pub fn new(
         name: String,
         hostname: String,
@@ -167,17 +200,124 @@ impl ConnectionInfo {
         Self {
             id: Uuid::new_v4(),
             name,
+            database_type: DatabaseType::PostgreSQL,
             hostname,
             username,
             password,
             database,
             port,
             ssl_mode,
+            file_path: None,
+            read_only: false,
         }
     }
 
-    /// Create connection options for sqlx without exposing password
+    /// Create a new server-based connection with specific database type
+    pub fn new_server(
+        name: String,
+        database_type: DatabaseType,
+        hostname: String,
+        port: usize,
+        username: String,
+        password: String,
+        database: String,
+        ssl_mode: SslMode,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            database_type,
+            hostname,
+            username,
+            password,
+            database,
+            port,
+            ssl_mode,
+            file_path: None,
+            read_only: false,
+        }
+    }
+
+    /// Create a new file-based connection (SQLite, DuckDB)
+    pub fn new_file(
+        name: String,
+        database_type: DatabaseType,
+        file_path: PathBuf,
+        read_only: bool,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            database_type,
+            hostname: String::new(),
+            username: String::new(),
+            password: String::new(),
+            database: String::new(),
+            port: 0,
+            ssl_mode: SslMode::default(),
+            file_path: Some(file_path),
+            read_only,
+        }
+    }
+
+    /// Check if this is a file-based connection
+    pub fn is_file_based(&self) -> bool {
+        self.database_type.is_file_based()
+    }
+
+    /// Check if this is a server-based connection
+    pub fn is_server_based(&self) -> bool {
+        self.database_type.is_server_based()
+    }
+
+    /// Convert to the new ConnectionConfig format
+    pub fn to_connection_config(&self) -> ConnectionConfig {
+        let params = if self.database_type.is_file_based() {
+            if let Some(path) = &self.file_path {
+                ConnectionParams::file(path.clone(), self.read_only)
+            } else {
+                // In-memory if no file path provided
+                ConnectionParams::in_memory()
+            }
+        } else {
+            let ssl_mode = match self.ssl_mode {
+                SslMode::Disable => TraitSslMode::Disable,
+                SslMode::Prefer => TraitSslMode::Prefer,
+                SslMode::Require => TraitSslMode::Require,
+                SslMode::VerifyCa => TraitSslMode::VerifyCa,
+                SslMode::VerifyFull => TraitSslMode::VerifyFull,
+            };
+
+            ConnectionParams::Server {
+                hostname: self.hostname.clone(),
+                port: self.port as u16,
+                username: self.username.clone(),
+                password: self.password.clone(),
+                database: self.database.clone(),
+                ssl_mode,
+                extra_options: std::collections::HashMap::new(),
+            }
+        };
+
+        ConnectionConfig::with_id(
+            self.id,
+            self.name.clone(),
+            self.database_type,
+            params,
+        )
+    }
+
+    /// Create connection options for sqlx (PostgreSQL only)
+    ///
+    /// # Panics
+    ///
+    /// Panics if called on a non-PostgreSQL connection.
     pub fn to_pg_connect_options(&self) -> PgConnectOptions {
+        assert!(
+            self.database_type == DatabaseType::PostgreSQL,
+            "to_pg_connect_options() can only be called on PostgreSQL connections"
+        );
+
         PgConnectOptions::new()
             .host(&self.hostname)
             .port(self.port as u16)
@@ -186,19 +326,42 @@ impl ConnectionInfo {
             .database(&self.database)
             .ssl_mode(self.ssl_mode.to_pg_ssl_mode())
     }
+
+    /// Get the default port for the current database type
+    pub fn default_port_for_type(&self) -> Option<u16> {
+        self.database_type.default_port()
+    }
+
+    /// Get the display name for the connection (e.g., "user@host:port/db" or file path)
+    pub fn display_info(&self) -> String {
+        if self.database_type.is_file_based() {
+            self.file_path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| ":memory:".to_string())
+        } else {
+            format!(
+                "{}@{}:{}/{}",
+                self.username, self.hostname, self.port, self.database
+            )
+        }
+    }
 }
 
 impl Default for ConnectionInfo {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
-            name: "Test".to_string(),
+            name: "New Connection".to_string(),
+            database_type: DatabaseType::PostgreSQL,
             hostname: "localhost".to_string(),
-            username: "test".to_string(),
-            password: "test".to_string(),
-            database: "test".to_string(),
+            username: String::new(),
+            password: String::new(),
+            database: String::new(),
             port: 5432,
             ssl_mode: SslMode::default(),
+            file_path: None,
+            read_only: false,
         }
     }
 }

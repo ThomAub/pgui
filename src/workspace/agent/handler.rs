@@ -4,7 +4,9 @@ use gpui::{AppContext, AsyncApp, WeakEntity};
 use crate::{
     services::agent::{
         Agent, AgentRequest, AgentResponse, ContentBlock, FileSource, UiMessage,
-        create_get_schema_tool, create_get_table_columns_tool, create_get_tables_tool, upload_file,
+        create_get_schema_tool, create_get_table_columns_tool, create_get_tables_tool,
+        create_get_storage_info_tool, create_list_storage_files_tool,
+        create_read_storage_file_preview_tool, upload_file,
     },
     workspace::agent::{panel::AgentPanel, tools::execute_tools},
 };
@@ -15,16 +17,22 @@ pub async fn handle_outgoing(
 ) {
     if let Some(mut agent) = Agent::builder()
         .system_prompt(
-            "You are a helpful, succint, postgres assistant with access to database tools. \
-          Please respond only in markdown and no emojis. \
-          "
-            .to_string(),
+            "You are a helpful, succinct assistant with access to database and storage tools. \
+            You can help users explore their PostgreSQL databases (schemas, tables, columns) \
+            and browse connected cloud storage (S3, GCS, or local filesystem). \
+            Please respond only in markdown and no emojis."
+                .to_string(),
         )
         .max_tokens(4096)
         .build(vec![
+            // Database tools
             create_get_schema_tool(),
             create_get_tables_tool(),
             create_get_table_columns_tool(),
+            // Storage tools
+            create_get_storage_info_tool(),
+            create_list_storage_files_tool(),
+            create_read_storage_file_preview_tool(),
         ])
         .ok()
     {

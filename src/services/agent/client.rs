@@ -436,6 +436,67 @@ pub fn create_get_table_columns_tool() -> Tool {
     }
 }
 
+// ============================================================================
+// Storage Tool Helpers
+// ============================================================================
+
+/// Tool: List files in storage at a given path
+pub fn create_list_storage_files_tool() -> Tool {
+    Tool {
+        name: "list_storage_files".to_string(),
+        description: "List files and directories in the connected storage (S3, GCS, or local filesystem) at the given path. \
+            Returns name, size, last modified time, and whether each item is a directory."
+            .to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The path to list files from. Use '/' for root.",
+                    "default": "/"
+                }
+            },
+            "required": []
+        }),
+    }
+}
+
+/// Tool: Get storage connection info
+pub fn create_get_storage_info_tool() -> Tool {
+    Tool {
+        name: "get_storage_info".to_string(),
+        description: "Get information about the currently connected storage backend, \
+            including storage type (S3, GCS, Local), bucket/root path, and connection status."
+            .to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        }),
+    }
+}
+
+/// Tool: Read a preview of a file from storage
+pub fn create_read_storage_file_preview_tool() -> Tool {
+    Tool {
+        name: "read_storage_file_preview".to_string(),
+        description: "Read the first part of a file from storage. \
+            Useful for previewing text files, CSV headers, JSON structure, etc. \
+            Limited to first 4KB of the file."
+            .to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "The path to the file to read"
+                }
+            },
+            "required": ["path"]
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

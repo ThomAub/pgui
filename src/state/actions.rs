@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use gpui::*;
 
-use crate::services::{AppStore, ConnectionInfo, ConnectionsRepository, DatabaseManager};
+use crate::services::{AppStore, ConnectionInfo, ConnectionsRepository, MultiDatabaseManager};
 
 use super::connection::{ConnectionState, ConnectionStatus};
 use super::database::DatabaseState;
@@ -120,7 +120,7 @@ pub fn delete_connection(connection: ConnectionInfo, cx: &mut App) {
 // Private Async Helpers
 // =============================================================================
 
-async fn connect_async(mut cic: ConnectionInfo, db_manager: DatabaseManager, cx: &mut AsyncApp) {
+async fn connect_async(mut cic: ConnectionInfo, db_manager: MultiDatabaseManager, cx: &mut AsyncApp) {
     // Load password from keychain on-demand
     if let Ok(password) = ConnectionsRepository::get_connection_password(&cic.id) {
         cic.password = password;
@@ -131,10 +131,10 @@ async fn connect_async(mut cic: ConnectionInfo, db_manager: DatabaseManager, cx:
         return;
     }
 
-    // Use secure connection options instead of string
-    let connect_options = cic.to_pg_connect_options();
+    // Convert to multi-database connection config
+    let connect_config = cic.to_connection_config();
 
-    if let Ok(_) = db_manager.connect_with_options(connect_options).await {
+    if let Ok(_) = db_manager.connect(connect_config).await {
         if let Ok(tables) = db_manager.get_tables().await {
             let _ = cx.update_global::<EditorState, _>(|state, _cx| {
                 state.tables = tables;
@@ -192,7 +192,7 @@ async fn connect_async(mut cic: ConnectionInfo, db_manager: DatabaseManager, cx:
     }
 }
 
-async fn disconnect_async(db_manager: DatabaseManager, cx: &mut AsyncApp) {
+async fn disconnect_async(db_manager: MultiDatabaseManager, cx: &mut AsyncApp) {
     let _ = cx.update_global::<ConnectionState, _>(|state, _cx| {
         state.active_connection = None;
         state.connection_state = ConnectionStatus::Disconnecting;

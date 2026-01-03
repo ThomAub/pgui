@@ -1,10 +1,24 @@
 mod manager;
+mod multi_manager;
 mod query;
 mod schema;
 mod types;
 
-pub use manager::DatabaseManager;
+// New multi-database abstraction modules
+pub mod drivers;
+pub mod storage;
+pub mod traits;
 
+pub use manager::DatabaseManager;
+pub use multi_manager::MultiDatabaseManager;
+
+// Re-export storage types (public API for multi-database abstraction)
+#[allow(unused_imports)]
+pub use storage::{
+    ObjectInfo, StorageConfig, StorageFactory, StorageManager, StorageParams, StorageType,
+};
+
+// Legacy types (will be migrated in Epic 2)
 #[allow(unused_imports)]
 pub use types::{
     ColumnDetail, ConstraintInfo, DatabaseInfo, DatabaseSchema, ErrorResult, ForeignKeyInfo,

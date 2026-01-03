@@ -2,10 +2,12 @@
 
 mod connections;
 mod history;
+mod storage_connections;
 mod types;
 
 pub use connections::ConnectionsRepository;
 pub use history::QueryHistoryRepository;
+pub use storage_connections::StorageConnectionsRepository;
 pub use types::*;
 
 use anyhow::Result;
@@ -71,6 +73,11 @@ impl AppStore {
         QueryHistoryRepository::new(self.pool.clone())
     }
 
+    /// Get a storage connections repository
+    pub fn storage_connections(&self) -> StorageConnectionsRepository {
+        StorageConnectionsRepository::new(self.pool.clone())
+    }
+
     /// Initialize the database schema
     async fn initialize_schema(&self) -> Result<()> {
         sqlx::query(
@@ -78,11 +85,14 @@ impl AppStore {
                 CREATE TABLE IF NOT EXISTS connections (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE,
-                    hostname TEXT NOT NULL,
-                    username TEXT NOT NULL,
-                    database TEXT NOT NULL,
-                    port INTEGER NOT NULL,
+                    database_type TEXT NOT NULL DEFAULT 'postgresql',
+                    hostname TEXT NOT NULL DEFAULT '',
+                    username TEXT NOT NULL DEFAULT '',
+                    database TEXT NOT NULL DEFAULT '',
+                    port INTEGER NOT NULL DEFAULT 5432,
                     ssl_mode TEXT NOT NULL DEFAULT 'prefer',
+                    file_path TEXT,
+                    read_only INTEGER NOT NULL DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -122,39 +132,88 @@ impl AppStore {
             .execute(&self.pool)
             .await?;
 
+        // Storage connections table (for S3, GCS, Azure, etc.)
+        sqlx::query(
+            r#"
+                CREATE TABLE IF NOT EXISTS storage_connections (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    storage_type TEXT NOT NULL DEFAULT 's3',
+                    endpoint TEXT,
+                    region TEXT NOT NULL DEFAULT '',
+                    bucket TEXT NOT NULL DEFAULT '',
+                    access_key_id TEXT,
+                    path_style INTEGER NOT NULL DEFAULT 0,
+                    allow_anonymous INTEGER NOT NULL DEFAULT 0,
+                    root_path TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Index for storage connections by name
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_storage_connections_name ON storage_connections(name)")
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 
     /// Migrate schema for existing databases
     async fn migrate_schema(&self) -> Result<()> {
-        // Try to check if ssl_mode column exists by querying a single row
-        let has_ssl_mode = sqlx::query("SELECT ssl_mode FROM connections LIMIT 1")
+        // Migration: Add ssl_mode column (v0.1.x -> v0.1.y)
+        self.migrate_add_column("ssl_mode", "TEXT NOT NULL DEFAULT 'prefer'")
+            .await;
+
+        // Migration: Add database_type column (for multi-database support)
+        self.migrate_add_column("database_type", "TEXT NOT NULL DEFAULT 'postgresql'")
+            .await;
+
+        // Migration: Add file_path column (for file-based databases)
+        self.migrate_add_column("file_path", "TEXT").await;
+
+        // Migration: Add read_only column (for file-based databases)
+        self.migrate_add_column("read_only", "INTEGER NOT NULL DEFAULT 0")
+            .await;
+
+        Ok(())
+    }
+
+    /// Helper to add a column if it doesn't exist
+    async fn migrate_add_column(&self, column_name: &str, column_def: &str) {
+        // Check if column exists
+        let check_query = format!("SELECT {} FROM connections LIMIT 1", column_name);
+        let column_exists = sqlx::query(&check_query)
             .fetch_optional(&self.pool)
             .await
             .is_ok();
 
-        if !has_ssl_mode {
-            tracing::debug!("Migration: ssl_mode column not found, adding it...");
+        if !column_exists {
+            tracing::debug!("Migration: {} column not found, adding it...", column_name);
 
-            // Add ssl_mode column with default value
-            match sqlx::query(
-                "ALTER TABLE connections ADD COLUMN ssl_mode TEXT NOT NULL DEFAULT 'prefer'",
-            )
-            .execute(&self.pool)
-            .await
-            {
+            let alter_query = format!(
+                "ALTER TABLE connections ADD COLUMN {} {}",
+                column_name, column_def
+            );
+
+            match sqlx::query(&alter_query).execute(&self.pool).await {
                 Ok(_) => {
-                    tracing::debug!("Migration: Successfully added ssl_mode column");
+                    tracing::debug!("Migration: Successfully added {} column", column_name);
                 }
                 Err(e) => {
                     // If column already exists, SQLite will error - that's okay
-                    tracing::warn!("Migration: Column may already exist: {}", e);
+                    tracing::warn!(
+                        "Migration: Column {} may already exist: {}",
+                        column_name,
+                        e
+                    );
                 }
             }
         } else {
-            tracing::debug!("Migration: ssl_mode column already exists");
+            tracing::debug!("Migration: {} column already exists", column_name);
         }
-
-        Ok(())
     }
 }
