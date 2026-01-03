@@ -45,6 +45,11 @@ pub struct StorageConnectionForm {
     path_style: bool,
     allow_anonymous: bool,
 
+    // GCS fields
+    gcs_bucket: Entity<InputState>,
+    gcs_project_id: Entity<InputState>,
+    gcs_credentials_path: Entity<InputState>,
+
     // Local filesystem fields
     root_path: Entity<InputState>,
 
@@ -123,9 +128,27 @@ impl StorageConnectionForm {
                 .clean_on_escape()
         });
 
+        // GCS fields
+        let gcs_bucket = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("my-gcs-bucket")
+                .clean_on_escape()
+        });
+        let gcs_project_id = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("my-project-id")
+                .clean_on_escape()
+        });
+        let gcs_credentials_path = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("/path/to/service-account.json")
+                .clean_on_escape()
+        });
+
         // Storage type selector
         let storage_types = vec![
             StorageTypeItem(StorageType::S3),
+            StorageTypeItem(StorageType::Gcs),
             StorageTypeItem(StorageType::LocalFs),
         ];
         let storage_type = cx.new(|cx| SelectState::new(storage_types, None, window, cx));
@@ -140,6 +163,9 @@ impl StorageConnectionForm {
             secret_access_key,
             path_style: false,
             allow_anonymous: false,
+            gcs_bucket,
+            gcs_project_id,
+            gcs_credentials_path,
             root_path,
             active_connection: None,
             selected_type: StorageType::S3,
@@ -173,6 +199,15 @@ impl StorageConnectionForm {
             .update(cx, |this, cx| this.set_value("", window, cx));
         let _ = self
             .secret_access_key
+            .update(cx, |this, cx| this.set_value("", window, cx));
+        let _ = self
+            .gcs_bucket
+            .update(cx, |this, cx| this.set_value("", window, cx));
+        let _ = self
+            .gcs_project_id
+            .update(cx, |this, cx| this.set_value("", window, cx));
+        let _ = self
+            .gcs_credentials_path
             .update(cx, |this, cx| this.set_value("", window, cx));
         let _ = self
             .root_path
@@ -223,6 +258,29 @@ impl StorageConnectionForm {
                 });
                 self.path_style = *path_style;
                 self.allow_anonymous = *allow_anonymous;
+            }
+            StorageParams::Gcs {
+                bucket,
+                project_id,
+                credentials_path,
+                ..
+            } => {
+                let _ = self.gcs_bucket.update(cx, |this, cx| {
+                    this.set_value(bucket.clone(), window, cx)
+                });
+                let _ = self.gcs_project_id.update(cx, |this, cx| {
+                    this.set_value(project_id.clone().unwrap_or_default(), window, cx)
+                });
+                let _ = self.gcs_credentials_path.update(cx, |this, cx| {
+                    this.set_value(
+                        credentials_path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default(),
+                        window,
+                        cx,
+                    )
+                });
             }
             StorageParams::LocalFs { root_path } => {
                 let _ = self.root_path.update(cx, |this, cx| {
@@ -282,6 +340,34 @@ impl StorageConnectionForm {
                     },
                     path_style: self.path_style,
                     allow_anonymous: self.allow_anonymous,
+                    extra_options: std::collections::HashMap::new(),
+                }
+            }
+            StorageType::Gcs => {
+                let bucket = self.gcs_bucket.read(cx).value().to_string();
+                if bucket.is_empty() {
+                    window.push_notification(
+                        (NotificationType::Error, "Bucket name is required."),
+                        cx,
+                    );
+                    return None;
+                }
+
+                let project_id = self.gcs_project_id.read(cx).value().to_string();
+                let credentials_path = self.gcs_credentials_path.read(cx).value().to_string();
+
+                StorageParams::Gcs {
+                    bucket,
+                    project_id: if project_id.is_empty() {
+                        None
+                    } else {
+                        Some(project_id)
+                    },
+                    credentials_path: if credentials_path.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(credentials_path))
+                    },
                     extra_options: std::collections::HashMap::new(),
                 }
             }
@@ -484,6 +570,34 @@ impl StorageConnectionForm {
                 .child(Input::new(&self.root_path)),
         )
     }
+
+    /// Render GCS-specific fields.
+    fn render_gcs_fields(&self) -> impl IntoElement {
+        v_form()
+            .columns(2)
+            .small()
+            .child(
+                field()
+                    .col_span(2)
+                    .label("Bucket")
+                    .required(true)
+                    .child(Input::new(&self.gcs_bucket)),
+            )
+            .child(
+                field()
+                    .col_span(2)
+                    .label("Project ID")
+                    .description("GCP project ID (optional if using default credentials)")
+                    .child(Input::new(&self.gcs_project_id)),
+            )
+            .child(
+                field()
+                    .col_span(2)
+                    .label("Service Account Key")
+                    .description("Path to service account JSON file (optional if using ADC)")
+                    .child(Input::new(&self.gcs_credentials_path)),
+            )
+    }
 }
 
 impl Render for StorageConnectionForm {
@@ -504,6 +618,7 @@ impl Render for StorageConnectionForm {
 
         let type_specific_fields: AnyElement = match self.selected_type {
             StorageType::S3 => self.render_s3_fields(cx).into_any_element(),
+            StorageType::Gcs => self.render_gcs_fields().into_any_element(),
             StorageType::LocalFs => self.render_local_fs_fields().into_any_element(),
             _ => div()
                 .child("This storage type is not yet supported.")
