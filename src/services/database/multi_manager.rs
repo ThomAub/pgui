@@ -127,7 +127,11 @@ impl MultiDatabaseManager {
     ///
     /// Note: Streaming export is not yet supported for multi-database connections.
     /// This method is a placeholder that returns an error.
-    pub async fn stream_query(&self, _sql: &str) -> Result<(), String> {
+    pub async fn stream_query<'a>(
+        &'a self,
+        _sql: &'a str,
+    ) -> Result<futures::stream::BoxStream<'a, Result<sqlx::postgres::PgRow, sqlx::Error>>, String>
+    {
         Err("Streaming export not yet supported for multi-database connections".to_string())
     }
 
